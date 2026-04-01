@@ -375,6 +375,33 @@ def init_db():
             created_at TEXT DEFAULT (datetime('now')),
             FOREIGN KEY (trip_id) REFERENCES trips(id)
         );
+
+        CREATE TABLE IF NOT EXISTS city_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            category TEXT NOT NULL,
+            description TEXT,
+            venue TEXT,
+            date TEXT,
+            end_date TEXT,
+            time TEXT,
+            price TEXT,
+            link TEXT,
+            image_url TEXT,
+            added_by_id INTEGER,
+            added_by_name TEXT,
+            interested_count INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS city_event_interest (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            user_name TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            UNIQUE(event_id, user_id)
+        );
     """)
     conn.commit()
     conn.close()
@@ -694,6 +721,58 @@ def api_vouch():
     conn.commit()
     conn.close()
     return jsonify({"ok": True})
+
+
+@app.route("/api/city-events", methods=["GET"])
+def api_city_events():
+    category = request.args.get("category")
+    conn = get_db()
+    if category:
+        events = conn.execute("SELECT * FROM city_events WHERE category = ? ORDER BY date", (category,)).fetchall()
+    else:
+        events = conn.execute("SELECT * FROM city_events ORDER BY date").fetchall()
+
+    # Add interest counts
+    result = []
+    for e in events:
+        d = dict(e)
+        ic = conn.execute("SELECT COUNT(*) as c FROM city_event_interest WHERE event_id = ?", (d["id"],)).fetchone()
+        d["interested_count"] = ic["c"] if ic else 0
+        names = conn.execute("SELECT user_name FROM city_event_interest WHERE event_id = ? LIMIT 5", (d["id"],)).fetchall()
+        d["interested_names"] = [n["user_name"] for n in names]
+        result.append(d)
+    conn.close()
+    return jsonify({"events": result})
+
+
+@app.route("/api/city-events", methods=["POST"])
+def api_add_city_event():
+    data = request.json
+    conn = get_db()
+    cursor = conn.execute(
+        "INSERT INTO city_events (title, category, description, venue, date, end_date, time, price, link, added_by_id, added_by_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (data.get("title"), data.get("category"), data.get("description"),
+         data.get("venue"), data.get("date"), data.get("end_date"),
+         data.get("time"), data.get("price"), data.get("link"),
+         data.get("user_id"), data.get("user_name"))
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "id": cursor.lastrowid})
+
+
+@app.route("/api/city-events/<int:event_id>/interest", methods=["POST"])
+def api_event_interest(event_id):
+    data = request.json
+    conn = get_db()
+    conn.execute(
+        "INSERT OR IGNORE INTO city_event_interest (event_id, user_id, user_name) VALUES (?, ?, ?)",
+        (event_id, data.get("user_id"), data.get("user_name"))
+    )
+    conn.commit()
+    count = conn.execute("SELECT COUNT(*) as c FROM city_event_interest WHERE event_id = ?", (event_id,)).fetchone()
+    conn.close()
+    return jsonify({"ok": True, "count": count["c"]})
 
 
 @app.route("/api/destinations", methods=["GET"])
@@ -2167,11 +2246,51 @@ def seed_destinations():
     conn.close()
 
 
+def seed_city_events():
+    """Seed Vienna events for April 2026."""
+    conn = get_db()
+    existing = conn.execute("SELECT COUNT(*) as c FROM city_events").fetchone()
+    if existing["c"] > 0:
+        conn.close()
+        return
+
+    events = [
+        ("Vienna Blues Spring", "Concert", "One of the world's longest blues festivals. Delta blues to boogie rock at the legendary Reigen theatre.", "Reigen", "2026-04-01", "2026-04-30", "20:00", "From 25", "https://www.bluesspring.at", None, 0, "Curated"),
+        ("Louis Tomlinson — How Did We Get Here? Tour", "Concert", "Former One Direction star brings his world tour to Vienna.", "Marx Halle", "2026-04-06", None, "20:00", "From 55", "https://www.marxhalle.at", None, 0, "Curated"),
+        ("Matt Maltese — Solo Show", "Concert", "Intimate solo performance from the British singer-songwriter.", "WUK", "2026-04-07", None, "20:00", "28", "https://www.wuk.at", None, 0, "Curated"),
+        ("Joe Di Nardo — COMEDY al dente", "Comedy", "Italian-Austrian comedian with his signature comedy cooking show.", "Orpheum", "2026-04-03", None, "20:00", "25", None, None, 0, "Curated"),
+        ("Mario Adrion: The Superior Comedy Tour", "Comedy", "German YouTuber and comedian live on stage.", "Theater Akzent", "2026-04-06", None, "20:00", "30", None, None, 0, "Curated"),
+        ("Naomi Jon & SAMI.C Live", "Comedy", "YouTube and social media stars perform live.", "Raiffeisen Halle / Gasometer", "2026-04-08", None, "19:30", "35", None, None, 0, "Curated"),
+        ("Klima Biennale Vienna 2026", "Exhibition", "Major festival of contemporary art and climate activism. Exhibitions, performances, and talks across the city.", "Various venues", "2026-04-09", "2026-05-10", None, "Free-20", "https://www.klimabiennale.at", None, 0, "Curated"),
+        ("Canaletto: Venetian Views — KHM", "Exhibition", "The famous Venetian view painters Canaletto at the Kunsthistorisches Museum.", "Kunsthistorisches Museum", "2026-04-01", "2026-08-30", None, "21", "https://www.khm.at", None, 0, "Curated"),
+        ("Gustave Courbet — Leopold Museum", "Exhibition", "Special exhibition dedicated to the French realist master.", "Leopold Museum", "2026-04-01", "2026-08-31", None, "16", "https://www.leopoldmuseum.org", None, 0, "Curated"),
+        ("Roy Lichtenstein: Retrospective — Albertina", "Exhibition", "The most comprehensive Lichtenstein retrospective in Europe.", "Albertina", "2026-01-23", "2026-05-18", None, "18.90", "https://www.albertina.at", None, 0, "Curated"),
+        ("Paper Art: From Printing Press to Present — Albertina", "Exhibition", "Copperplate engravings, 3D objects, and rarely shown drawings exploring paper as art.", "Albertina", "2026-04-01", "2026-07-15", None, "18.90", "https://www.albertina.at", None, 0, "Curated"),
+        ("Styrian Spring Festival", "Festival", "Farmers, wine growers, and musicians from the Steiermark region descend on Vienna.", "Rathausplatz", "2026-04-08", "2026-04-12", "10:00", "Free", None, None, 0, "Curated"),
+        ("Edelstoff Design Market", "Market", "Independent designers showcase fashion, jewelry, and home goods.", "Ottakringer Brauerei", "2026-04-25", "2026-04-26", "11:00", "5", None, None, 0, "Curated"),
+        ("Vienna Vintage Photo Fair", "Market", "Specialist vendors and historical photographs. Free entry.", "WestLicht", "2026-04-12", None, "10:00", "Free", None, None, 0, "Curated"),
+        ("Fantasy Con Vienna", "Festival", "Artist alley, readings, cosplay, and music for fantasy fans.", "Expedithalle", "2026-04-25", "2026-04-26", "10:00", "15", None, None, 0, "Curated"),
+        ("Salam Music & Arts Festival", "Festival", "Celebrating Vienna's Arab community with music, art, food, and dialogue.", "Various venues", "2026-04-17", "2026-04-26", None, "Varies", None, None, 0, "Curated"),
+        ("Angelo Kelly — Irish Summer Tour", "Concert", "Former Kelly Family star with Irish folk and pop.", "Szene Wien", "2026-04-10", None, "20:00", "40", None, None, 0, "Curated"),
+        ("Vienna Furniture Museum — Post-War Design", "Exhibition", "Evolution of furniture design in post-WWII Austria.", "Hofmobiliendepot", "2026-04-15", "2026-09-30", None, "12", "https://www.hofmobiliendepot.at", None, 0, "Curated"),
+        ("Classic Ensemble Vienna at Peterskirche", "Concert", "Light classical concerts in the stunning Baroque Peterskirche.", "Peterskirche", "2026-04-01", "2026-04-30", "20:15", "35", "https://www.viennaconcerts.com", None, 0, "Curated"),
+        ("mumok — Art of the 60s", "Exhibition", "A journey back in time to Pop Art, Minimalism, and Fluxus.", "mumok", "2026-04-01", "2026-04-19", None, "14", "https://www.mumok.at", None, 0, "Curated"),
+    ]
+
+    for e in events:
+        conn.execute(
+            "INSERT INTO city_events (title, category, description, venue, date, end_date, time, price, link, image_url, interested_count, added_by_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", e
+        )
+    conn.commit()
+    conn.close()
+
+
 # Initialize DB on import (needed for gunicorn on Render)
 try:
     init_db()
     seed_museums()
     seed_destinations()
+    seed_city_events()
 except Exception as e:
     print(f"DB init warning: {e}")
 

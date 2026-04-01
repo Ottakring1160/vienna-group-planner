@@ -16,7 +16,7 @@
         <div class="sidebar-nav">
             <button class="nav-item active" data-page="dashboard" onclick="showPage('dashboard')"><span class="nav-icon">📊</span><span class="nav-label">Dashboard</span></button>
             <button class="nav-item" data-page="restaurants" onclick="showPage('restaurants')"><span class="nav-icon">🍽</span><span class="nav-label">Restaurants</span></button>
-            <button class="nav-item" data-page="museums" onclick="showPage('museums')"><span class="nav-icon">🖼</span><span class="nav-label">Museums</span></button>
+            <button class="nav-item" data-page="whatson" onclick="showPage('whatson')"><span class="nav-icon">🎭</span><span class="nav-label">What's On</span></button>
             <button class="nav-item" data-page="plan" onclick="showPage('plan')"><span class="nav-icon">📅</span><span class="nav-label">Plan Outing</span></button>
             <button class="nav-item" data-page="leaderboard" onclick="showPage('leaderboard')"><span class="nav-icon">🏆</span><span class="nav-label">Leaderboard</span></button>
             <button class="nav-item" data-page="chat" onclick="showPage('chat')"><span class="nav-icon">💬</span><span class="nav-label">Group Chat</span></button>
@@ -105,10 +105,21 @@
         </div>
 
         <!-- ===== MUSEUMS ===== -->
-        <div class="page" id="page-museums">
-            <div class="page-header"><div><h1>Vienna Art Museums</h1><p class="page-subtitle">Current exhibitions across Vienna's top museums</p></div></div>
-            <div class="map-container"><div id="museum-map"></div></div>
-            <div id="museums-list"></div>
+        <div class="page" id="page-whatson">
+            <div class="page-header">
+                <div><h1>What's On in Vienna</h1><p class="page-subtitle">Concerts, comedy, exhibitions, markets — curated for your crew</p></div>
+                <button class="btn-accent" onclick="openAddEventModal()">+ Add Event</button>
+            </div>
+            <div class="event-category-bar" id="event-cat-bar">
+                <button class="event-cat-btn active" onclick="filterCityEvents('',this)">All</button>
+                <button class="event-cat-btn" onclick="filterCityEvents('Concert',this)">🎵 Concerts</button>
+                <button class="event-cat-btn" onclick="filterCityEvents('Comedy',this)">😂 Comedy</button>
+                <button class="event-cat-btn" onclick="filterCityEvents('Exhibition',this)">🖼 Exhibitions</button>
+                <button class="event-cat-btn" onclick="filterCityEvents('Festival',this)">🎪 Festivals</button>
+                <button class="event-cat-btn" onclick="filterCityEvents('Market',this)">🛍 Markets</button>
+            </div>
+            <div id="city-events-list"></div>
+            <div class="empty-state" id="city-events-empty" style="display:none"><span class="empty-state-icon">🎭</span>No events found. Add one!</div>
         </div>
 
         <!-- ===== PLAN OUTING ===== -->
@@ -261,6 +272,29 @@
     </main>
 </div>
 
+<!-- Add City Event Modal -->
+<div class="modal-overlay" id="add-event-modal" style="display:none">
+    <div class="modal" style="max-width:520px">
+        <div class="modal-header"><h2>Add an Event</h2><button class="modal-close" onclick="document.getElementById('add-event-modal').style.display='none'">&times;</button></div>
+        <div style="padding:24px;display:flex;flex-direction:column;gap:14px">
+            <div class="form-group"><label>Event Name <span class="required">*</span></label><input type="text" id="ce-title" class="plan-input" placeholder="e.g. Taylor Swift — Eras Tour Vienna"></div>
+            <div class="form-group"><label>Category <span class="required">*</span></label><select id="ce-category" class="plan-input"><option value="">—</option><option>Concert</option><option>Comedy</option><option>Exhibition</option><option>Festival</option><option>Market</option><option>Nightlife</option><option>Sports</option><option>Theatre</option><option>Other</option></select></div>
+            <div class="form-group"><label>Venue</label><input type="text" id="ce-venue" class="plan-input" placeholder="e.g. Gasometer, WUK, Albertina..."></div>
+            <div style="display:flex;gap:10px">
+                <div class="form-group" style="flex:1"><label>Date</label><input type="date" id="ce-date" class="plan-input"></div>
+                <div class="form-group" style="flex:1"><label>End Date</label><input type="date" id="ce-end-date" class="plan-input"></div>
+                <div class="form-group" style="width:100px"><label>Time</label><input type="time" id="ce-time" class="plan-input"></div>
+            </div>
+            <div style="display:flex;gap:10px">
+                <div class="form-group" style="flex:1"><label>Price</label><input type="text" id="ce-price" class="plan-input" placeholder="e.g. 35, Free, From 25"></div>
+                <div class="form-group" style="flex:2"><label>Link</label><input type="text" id="ce-link" class="plan-input" placeholder="Ticket or info link"></div>
+            </div>
+            <div class="form-group"><label>Description</label><input type="text" id="ce-desc" class="plan-input" placeholder="What's it about?"></div>
+            <button class="btn-accent" style="padding:12px;margin-top:4px" onclick="submitCityEvent()">Add Event</button>
+        </div>
+    </div>
+</div>
+
 <!-- Restaurant Detail Slide-over -->
 <div id="detail-bg" class="detail-overlay-bg" style="display:none" onclick="closeDetail()"></div>
 <div id="detail-panel" class="detail-overlay" style="display:none">
@@ -384,7 +418,7 @@ function showPage(p){
     history.replaceState(null,null,'#'+p);
     if(p==='dashboard') loadDashboard();
     if(p==='restaurants'){loadRestaurants();setTimeout(()=>{initMap('restaurant-map','restaurantMap')},200)}
-    if(p==='museums'){loadMuseums();setTimeout(()=>{initMap('museum-map','museumMap')},200)}
+    if(p==='whatson') loadWhatsOn();
     if(p==='plan') loadPlanPage();
     if(p==='leaderboard') loadLeaderboard();
 }
@@ -1123,6 +1157,103 @@ async function sendTripToWhatsApp(){
 }
 
 function copyPlanMessage(){navigator.clipboard.writeText(document.getElementById('plan-preview').textContent).then(()=>alert('Copied!'))}
+
+// ===== WHAT'S ON =====
+let allCityEvents=[], cityEventFilter='';
+
+async function loadWhatsOn(){
+    const data=await fetch('/api/city-events').then(r=>r.json());
+    allCityEvents=data.events;
+    renderCityEvents(allCityEvents);
+}
+
+function filterCityEvents(cat,btn){
+    cityEventFilter=cat;
+    document.querySelectorAll('.event-cat-btn').forEach(b=>b.classList.remove('active'));
+    if(btn) btn.classList.add('active');
+    const filtered=cat?allCityEvents.filter(e=>e.category===cat):allCityEvents;
+    renderCityEvents(filtered);
+}
+
+function renderCityEvents(events){
+    const list=document.getElementById('city-events-list');
+    const empty=document.getElementById('city-events-empty');
+    if(!events.length){list.innerHTML='';empty.style.display='block';return}
+    empty.style.display='none';
+
+    const catIcons={Concert:'🎵',Comedy:'😂',Exhibition:'🖼',Festival:'🎪',Market:'🛍',Nightlife:'🌙',Sports:'⚽',Theatre:'🎭',Other:'📌'};
+    const catColors={Concert:'#e74c3c',Comedy:'#f39c12',Exhibition:'#8e44ad',Festival:'#2ecc71',Market:'#e67e22',Nightlife:'#2c3e50',Sports:'#3498db',Theatre:'#c0392b',Other:'#b8963e'};
+
+    list.innerHTML=events.map(e=>{
+        const icon=catIcons[e.category]||'📌';
+        const color=catColors[e.category]||'#b8963e';
+        const isMultiDay=e.end_date&&e.end_date!==e.date;
+        const dateStr=isMultiDay?`${e.date} → ${e.end_date}`:e.date||'TBD';
+        const intNames=e.interested_names||[];
+        const intCount=e.interested_count||0;
+
+        return `<div class="city-event-card">
+            <div class="ce-accent" style="background:${color}"></div>
+            <div class="ce-body">
+                <div class="ce-top">
+                    <div class="ce-icon" style="background:${color}20;color:${color}">${icon}</div>
+                    <div class="ce-info">
+                        <div class="ce-title">${e.title}</div>
+                        <div class="ce-meta">${e.venue||''} · ${dateStr}${e.time?' · '+e.time:''}</div>
+                    </div>
+                    <div class="ce-price">${e.price?'€'+e.price.replace('From ','from '):''}</div>
+                </div>
+                ${e.description?`<div class="ce-desc">${e.description}</div>`:''}
+                <div class="ce-bottom">
+                    <div class="ce-interested">
+                        ${intCount>0?intNames.map(n=>`<span class="vouch-avatar" style="width:20px;height:20px;font-size:9px">${n.charAt(0)}</span>`).join('')+'<span style="font-size:12px;color:var(--text-secondary)">'+intCount+' interested</span>':'<span style="font-size:12px;color:var(--text-muted)">Be the first!</span>'}
+                    </div>
+                    <div class="ce-actions">
+                        <button class="btn-card" onclick="markInterested(${e.id})">🙋 I'm interested</button>
+                        ${e.link?`<a href="${e.link}" target="_blank" class="btn-card" style="text-decoration:none">🔗 Details</a>`:''}
+                        <button class="btn-card" onclick="shareEvent(${e.id},'${e.title.replace(/'/g,"\\'")}','${dateStr}','${e.venue||''}')">📤 Share</button>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+async function markInterested(eventId){
+    const u=getUser();
+    await fetch('/api/city-events/'+eventId+'/interest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:u.id,user_name:u.name})});
+    loadWhatsOn();
+}
+
+function shareEvent(id,title,date,venue){
+    const msg=`🎭 Check this out!\n\n${title}\n📅 ${date}\n📍 ${venue}\n\nWho's down?`;
+    window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
+}
+
+function openAddEventModal(){
+    document.getElementById('add-event-modal').style.display='flex';
+    ['ce-title','ce-category','ce-venue','ce-date','ce-end-date','ce-time','ce-price','ce-link','ce-desc'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});
+}
+
+async function submitCityEvent(){
+    const title=document.getElementById('ce-title').value;
+    const category=document.getElementById('ce-category').value;
+    if(!title||!category){alert('Name and category are required');return}
+    const u=getUser();
+    await fetch('/api/city-events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        title, category,
+        venue:document.getElementById('ce-venue').value,
+        date:document.getElementById('ce-date').value,
+        end_date:document.getElementById('ce-end-date').value,
+        time:document.getElementById('ce-time').value,
+        price:document.getElementById('ce-price').value,
+        link:document.getElementById('ce-link').value,
+        description:document.getElementById('ce-desc').value,
+        user_id:u.id, user_name:u.name
+    })});
+    document.getElementById('add-event-modal').style.display='none';
+    loadWhatsOn();
+}
 
 // ===== LEADERBOARD (interactive) =====
 async function loadLeaderboard(){
