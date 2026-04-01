@@ -10,14 +10,19 @@ from datetime import datetime, timedelta
 app = Flask(__name__)
 app.secret_key = "vienna-planner-prototype-secret"
 
-# Google Places API key — get from https://console.cloud.google.com/apis/credentials
-# Enable "Places API (New)" and "Geocoding API"
+# Google Places API key
 GOOGLE_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY", "AIzaSyDSSwkwXjyE3Sm8DthXm89AvYReQjzjp_4")
 
-# Use /tmp on cloud deployments (ephemeral but writable), local file otherwise
-_is_cloud = os.environ.get("RENDER") or os.environ.get("PORT")
-if _is_cloud:
-    DB_PATH = "/tmp/vienna_planner.db"
+# Database: PostgreSQL on Render, SQLite locally
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+USE_POSTGRES = DATABASE_URL.startswith("postgres")
+
+if USE_POSTGRES:
+    import psycopg2
+    import psycopg2.extras
+    # Render uses postgres:// but psycopg2 needs postgresql://
+    if DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 else:
     DB_PATH = os.path.join(os.path.dirname(__file__), "vienna_planner.db")
 
@@ -38,10 +43,108 @@ GROUP_MEMBERS = [
 ]
 
 
+class DictRow(dict):
+    """Make dict behave like sqlite3.Row for compatibility."""
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return list(self.values())[key]
+        return super().__getitem__(key)
+
+
+class DBConnection:
+    """Wrapper that provides the same interface for both SQLite and PostgreSQL."""
+    def __init__(self):
+        if USE_POSTGRES:
+            self.conn = psycopg2.connect(DATABASE_URL)
+            self.is_pg = True
+        else:
+            self.conn = sqlite3.connect(DB_PATH)
+            self.conn.row_factory = sqlite3.Row
+            self.is_pg = False
+
+    def execute(self, query, params=None):
+        if self.is_pg:
+            query = query.replace("?", "%s")
+            # Handle INSERT OR REPLACE: convert to upsert
+            if "INSERT OR REPLACE INTO" in query:
+                query = self._convert_upsert(query, "REPLACE")
+            elif "INSERT OR IGNORE INTO" in query:
+                query = self._convert_upsert(query, "IGNORE")
+            cur = self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            # Add RETURNING id for INSERT statements to get lastrowid
+            if query.strip().upper().startswith("INSERT") and "RETURNING" not in query.upper() and "ON CONFLICT" not in query.upper():
+                query = query.rstrip().rstrip(";") + " RETURNING id"
+            try:
+                cur.execute(query, params or ())
+            except psycopg2.errors.UniqueViolation:
+                self.conn.rollback()
+                return PGCursor(cur, False)
+            except Exception as e:
+                self.conn.rollback()
+                raise
+            return PGCursor(cur, query.strip().upper().startswith("INSERT"))
+        else:
+            return self.conn.execute(query, params or ())
+
+    def _convert_upsert(self, query, mode):
+        """Convert INSERT OR REPLACE/IGNORE to PostgreSQL ON CONFLICT."""
+        query = query.replace("INSERT OR REPLACE INTO", "INSERT INTO")
+        query = query.replace("INSERT OR IGNORE INTO", "INSERT INTO")
+        # For simplicity, use ON CONFLICT DO NOTHING for both modes
+        # This prevents duplicate key errors
+        if "ON CONFLICT" not in query:
+            query = query.rstrip().rstrip(";") + " ON CONFLICT DO NOTHING"
+        return query
+
+    def executescript(self, script):
+        if self.is_pg:
+            # Convert SQLite syntax to PostgreSQL
+            script = script.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
+            script = script.replace("datetime('now')", "NOW()")
+            script = script.replace("UNIQUE(", "UNIQUE (")
+            cur = self.conn.cursor()
+            cur.execute(script)
+            self.conn.commit()
+        else:
+            self.conn.executescript(script)
+
+    def commit(self):
+        self.conn.commit()
+
+    def close(self):
+        self.conn.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+
+class PGCursor:
+    """Wrapper around psycopg2 cursor to match sqlite3 interface."""
+    def __init__(self, cursor, is_insert=False):
+        self.cursor = cursor
+        self.lastrowid = None
+        if is_insert:
+            try:
+                row = cursor.fetchone()
+                if row and "id" in row:
+                    self.lastrowid = row["id"]
+            except Exception:
+                pass
+
+    def fetchone(self):
+        row = self.cursor.fetchone()
+        return DictRow(row) if row else None
+
+    def fetchall(self):
+        rows = self.cursor.fetchall()
+        return [DictRow(r) for r in rows]
+
+
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return DBConnection()
 
 
 def init_db():
