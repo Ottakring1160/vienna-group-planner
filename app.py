@@ -978,9 +978,21 @@ def _guess_cuisine(types, primary_type):
             return type_map[t]
     # Check primary type display name
     pt_lower = primary_type.lower()
-    for keyword, cuisine in [("austrian", "Austrian"), ("wiener", "Austrian"),
-                              ("italian", "Italian"), ("asian", "Asian"),
-                              ("japanese", "Japanese"), ("chinese", "Chinese")]:
+    for keyword, cuisine in [
+        ("austrian", "Austrian"), ("wiener", "Austrian"),
+        ("italian", "Italian"), ("asian", "Asian"),
+        ("japanese", "Japanese"), ("chinese", "Chinese"),
+        ("korean", "Korean"), ("thai", "Thai"),
+        ("vietnamese", "Vietnamese"), ("indian", "Indian"),
+        ("mexican", "Mexican"), ("turkish", "Turkish"),
+        ("greek", "Greek"), ("french", "French"),
+        ("ethiopian", "Ethiopian"), ("irish", "Irish"),
+        ("ramen", "Ramen"), ("bbq", "BBQ"), ("barbecue", "BBQ"),
+        ("bakery", "Bakery"), ("fine dining", "Fine Dining"),
+        ("doner", "Turkish"), ("kebab", "Turkish"),
+        ("cocktail", "Bar"), ("wine bar", "Bar"), ("pub", "Bar"),
+        ("cafe", "Cafe"), ("coffee", "Cafe"),
+    ]:
         if keyword in pt_lower:
             return cuisine
     return ""
