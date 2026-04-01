@@ -810,14 +810,20 @@ def maps_lookup():
             place_name = unquote(q_match.group(1)).replace('+', ' ')
 
     # If not a URL at all, treat the input as a search query directly
-    if not place_name and not any(x in maps_input for x in ["google", "goo.gl", "http", "share."]):
+    is_url = any(x in maps_input for x in ["google", "goo.gl", "http", "share."])
+    if not place_name and not is_url:
         place_name = maps_input
 
     # Step 2: If we have a Google API key, use Places API
     if GOOGLE_API_KEY:
-        # If no place name extracted, try searching with the original URL or resolved URL
-        search_query = place_name or maps_input
-        return _lookup_with_api(search_query, resolved_url)
+        if place_name:
+            return _lookup_with_api(place_name, resolved_url)
+        else:
+            # URL didn't resolve to a name — ask user to search by name
+            return jsonify({
+                "error": "Couldn't extract the restaurant name from that link. Try typing the restaurant name instead (e.g. 'Plachutta Wollzeile').",
+                "hint": "name_search"
+            }), 400
 
     # Step 3: Fallback — return what we parsed from the URL
     # Extract coordinates if present
@@ -934,7 +940,8 @@ def _guess_cuisine(types, primary_type):
         "vietnamese_restaurant": "Vietnamese", "korean_restaurant": "Korean",
         "seafood_restaurant": "Seafood", "vegan_restaurant": "Vegetarian/Vegan",
         "vegetarian_restaurant": "Vegetarian/Vegan",
-        "bar": "Bar/Drinks", "cafe": "Brunch/Cafe", "coffee_shop": "Brunch/Cafe",
+        "bar": "Bar", "wine_bar": "Bar", "cocktail_bar": "Bar",
+        "cafe": "Cafe", "coffee_shop": "Cafe",
         "brunch_restaurant": "Brunch/Cafe", "hamburger_restaurant": "American",
         "steak_house": "American", "mediterranean_restaurant": "Greek",
         "middle_eastern_restaurant": "Middle Eastern",

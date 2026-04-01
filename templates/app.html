@@ -51,7 +51,7 @@
             <div class="map-container"><div id="restaurant-map"></div></div>
             <div class="filter-bar">
                 <input type="text" class="filter-search" id="filter-text" placeholder="Search..." oninput="filterRestaurants()">
-                <select id="filter-cuisine" onchange="filterRestaurants()"><option value="">All Cuisines</option><option>Austrian</option><option>Italian</option><option>Asian</option><option>Japanese</option><option>Chinese</option><option>Thai</option><option>Indian</option><option>Mexican</option><option>Middle Eastern</option><option>Greek</option><option>French</option><option>American</option><option>Balkan</option><option>Turkish</option><option>Vietnamese</option><option>Korean</option><option>Vegetarian/Vegan</option><option>Seafood</option><option>Brunch/Cafe</option><option>Bar/Drinks</option></select>
+                <select id="filter-cuisine" onchange="filterRestaurants()"><option value="">All Cuisines</option><option>Austrian</option><option>Italian</option><option>Asian</option><option>Japanese</option><option>Chinese</option><option>Thai</option><option>Indian</option><option>Mexican</option><option>Middle Eastern</option><option>Greek</option><option>French</option><option>American</option><option>Balkan</option><option>Turkish</option><option>Vietnamese</option><option>Korean</option><option>Vegetarian/Vegan</option><option>Seafood</option><option>Brunch/Cafe</option><option>Bar/Drinks</option><option>Bar</option><option>Cafe</option></select>
                 <select id="filter-price" onchange="filterRestaurants()"><option value="">All Prices</option><option>€</option><option>€€</option><option>€€€</option><option>€€€€</option></select>
                 <select id="filter-district" onchange="filterRestaurants()"><option value="">All Districts</option>{% for i in range(1, 24) %}<option>{{ i }}.</option>{% endfor %}</select>
                 <button class="btn-clear-filters" id="btn-clear" onclick="clearFilters()" style="display:none">Clear all</button>
@@ -769,7 +769,12 @@ async function lookupMaps(){
 
 function showMapsPreview(data,msg,src){
     const p=document.getElementById('maps-preview');
-    if(!data){p.style.display='block';p.innerHTML=`<div class="maps-error">${msg}</div>`;return}
+    if(!data){
+        p.style.display='block';
+        const isHint = msg && msg.includes('name instead');
+        p.innerHTML=`<div class="maps-error">${msg}${isHint?'<div style="margin-top:10px"><input type="text" id="maps-retry-name" class="maps-tags-input" placeholder="Type the restaurant name here..." style="width:70%;display:inline-block" onkeydown="if(event.key===\'Enter\'){document.getElementById(\'maps-link-input\').value=this.value;lookupMaps()}"><button class="btn-accent" style="margin-left:8px" onclick="document.getElementById(\'maps-link-input\').value=document.getElementById(\'maps-retry-name\').value;lookupMaps()">Search</button></div>':''}</div>`;
+        return;
+    }
     const rating=data.rating?`<span class="maps-rating">⭐ ${data.rating}${data.rating_count?' ('+data.rating_count+')':''}</span>`:'';
     const note=src==='url_parse'?`<div class="maps-note">${msg}</div>`:'';
     p.style.display='block';
