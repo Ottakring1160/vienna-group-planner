@@ -797,6 +797,8 @@ def _lookup_with_api(place_name, original_url):
     address = place.get("formattedAddress", "")
     district = _extract_district(address)
 
+    loc = place.get("location", {})
+
     return jsonify({
         "success": True,
         "source": "google_api",
@@ -811,6 +813,8 @@ def _lookup_with_api(place_name, original_url):
             "rating": place.get("rating"),
             "rating_count": place.get("userRatingCount"),
             "primary_type": place.get("primaryTypeDisplayName", {}).get("text", ""),
+            "lat": loc.get("latitude"),
+            "lng": loc.get("longitude"),
         }
     })
 
