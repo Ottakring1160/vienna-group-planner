@@ -8,6 +8,7 @@ from urllib.parse import unquote
 from datetime import datetime, timedelta
 
 app = Flask(__name__)
+app.config['TEMPLATES_AUTO_RELOAD'] = True
 app.secret_key = "vienna-planner-prototype-secret"
 
 # Google Places API key
