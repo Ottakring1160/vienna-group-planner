@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+vienna_planner.db
+.claude/
+*.output
+static/mockup-*.html
+tunnel.py

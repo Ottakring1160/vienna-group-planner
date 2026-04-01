@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vienna Group Planner</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</head>
+<body>
+<div class="app-shell">
+    <nav class="sidebar">
+        <div class="sidebar-brand"><span class="brand-icon">🇦🇹</span><span class="brand-text">Vienna<br>Planner</span></div>
+        <div class="sidebar-nav">
+            <button class="nav-item active" data-page="dashboard" onclick="showPage('dashboard')"><span class="nav-icon">📊</span><span class="nav-label">Dashboard</span></button>
+            <button class="nav-item" data-page="restaurants" onclick="showPage('restaurants')"><span class="nav-icon">🍽</span><span class="nav-label">Restaurants</span></button>
+            <button class="nav-item" data-page="museums" onclick="showPage('museums')"><span class="nav-icon">🖼</span><span class="nav-label">Museums</span></button>
+            <button class="nav-item" data-page="plan" onclick="showPage('plan')"><span class="nav-icon">📅</span><span class="nav-label">Plan Outing</span></button>
+            <button class="nav-item" data-page="leaderboard" onclick="showPage('leaderboard')"><span class="nav-icon">🏆</span><span class="nav-label">Leaderboard</span></button>
+            <button class="nav-item" data-page="chat" onclick="showPage('chat')"><span class="nav-icon">💬</span><span class="nav-label">Group Chat</span></button>
+        </div>
+        <div class="sidebar-footer"><div class="user-switcher-compact" id="user-profile-display" style="cursor:pointer" onclick="showProfileSetup()"><label style="pointer-events:none">YOUR PROFILE</label><div id="profile-name-display" style="color:#fff;font-size:13px;font-weight:600;margin-top:2px">Set up profile...</div></div><select id="user-select" style="display:none">{% for m in members %}<option value="{{ m.id }}" data-name="{{ m.name }}">{{ m.name }}</option>{% endfor %}</select></div>
+    </nav>
+
+    <main class="main-content">
+        <!-- ===== DASHBOARD ===== -->
+        <div class="page active" id="page-dashboard">
+            <div class="page-header"><div><h1>Dashboard</h1><p class="page-subtitle">Your group's Vienna picks at a glance</p></div></div>
+            <div class="stats-row">
+                <div class="stat-card"><div class="stat-icon">🍽</div><div class="stat-number" id="stat-restaurants">0</div><div class="stat-label">Restaurants</div></div>
+                <div class="stat-card"><div class="stat-icon">🖼</div><div class="stat-number" id="stat-museums">0</div><div class="stat-label">Museums</div></div>
+                <div class="stat-card"><div class="stat-icon">📌</div><div class="stat-number" id="stat-shortlist">0</div><div class="stat-label">Your Shortlist</div></div>
+                <div class="stat-card"><div class="stat-icon">📅</div><div class="stat-number" id="stat-plans">0</div><div class="stat-label">Active Plans</div></div>
+            </div>
+            <div class="section"><h2>Your Shortlist</h2><div class="card-grid" id="shortlist-grid"></div><div class="empty-state" id="shortlist-empty" style="display:none"><span class="empty-state-icon">📌</span>No restaurants shortlisted yet. Browse restaurants and click the bookmark to add!</div></div>
+            <div class="section"><h2>Trending in the Group</h2><div class="card-grid" id="trending-grid"></div><div class="empty-state" id="trending-empty" style="display:none"><span class="empty-state-icon">🔥</span>No items flagged yet.</div></div>
+            <div class="section"><h2>Expiring Soon</h2><div class="card-grid" id="expiring-grid"></div><div class="empty-state" id="expiring-empty" style="display:none"><span class="empty-state-icon">🖼</span>No exhibitions expiring soon.</div></div>
+        </div>
+
+        <!-- ===== RESTAURANTS ===== -->
+        <div class="page" id="page-restaurants">
+            <div class="page-header"><div><h1>Restaurants</h1></div><div style="display:flex;gap:8px"><button class="btn-outline" onclick="openImportModal()">📥 Bulk Import</button><button class="btn-accent" onclick="openAddModal('restaurant')">+ Add Manually</button></div></div>
+            <div class="maps-add-bar"><div class="maps-add-icon">📍</div><input type="text" id="maps-link-input" placeholder="Paste a Google Maps link or search by name..." onkeydown="if(event.key==='Enter') lookupMaps()"><button class="btn-accent" onclick="lookupMaps()" id="maps-lookup-btn">Add from Maps</button></div>
+            <div id="maps-preview" class="maps-preview" style="display:none"></div>
+            <div class="tab-bar">
+                <button class="tab-btn active" onclick="setRestTab('all',this)">All Restaurants</button>
+                <button class="tab-btn" onclick="setRestTab('shortlist',this)">📌 My Shortlist</button>
+            </div>
+            <div class="map-container"><div id="restaurant-map"></div></div>
+            <div class="filter-bar">
+                <input type="text" class="filter-search" id="filter-text" placeholder="Search..." oninput="filterRestaurants()">
+                <select id="filter-cuisine" onchange="filterRestaurants()"><option value="">All Cuisines</option><option>Austrian</option><option>Italian</option><option>Asian</option><option>Japanese</option><option>Chinese</option><option>Thai</option><option>Indian</option><option>Mexican</option><option>Middle Eastern</option><option>Greek</option><option>French</option><option>American</option><option>Balkan</option><option>Turkish</option><option>Vietnamese</option><option>Korean</option><option>Vegetarian/Vegan</option><option>Seafood</option><option>Brunch/Cafe</option><option>Bar/Drinks</option></select>
+                <select id="filter-price" onchange="filterRestaurants()"><option value="">All Prices</option><option>€</option><option>€€</option><option>€€€</option><option>€€€€</option></select>
+                <select id="filter-district" onchange="filterRestaurants()"><option value="">All Districts</option>{% for i in range(1, 24) %}<option>{{ i }}.</option>{% endfor %}</select>
+                <button class="btn-clear-filters" id="btn-clear" onclick="clearFilters()" style="display:none">Clear all</button>
+                <span class="filter-count" id="filter-count"></span>
+            </div>
+            <div class="card-grid" id="restaurants-grid"></div>
+            <div class="empty-state" id="restaurants-empty" style="display:none"><span class="empty-state-icon">🍽</span>No restaurants yet. Paste a Google Maps link above!</div>
+        </div>
+
+        <!-- ===== MUSEUMS ===== -->
+        <div class="page" id="page-museums">
+            <div class="page-header"><div><h1>Vienna Art Museums</h1><p class="page-subtitle">Current exhibitions across Vienna's top museums</p></div></div>
+            <div class="map-container"><div id="museum-map"></div></div>
+            <div id="museums-list"></div>
+        </div>
+
+        <!-- ===== PLAN OUTING ===== -->
+        <div class="page" id="page-plan">
+            <div class="page-header"><div><h1>Plan an Outing</h1><p class="page-subtitle">Pick a date, suggest restaurants, send to the group</p></div></div>
+            <div class="plan-form">
+                <div class="plan-step">
+                    <div class="plan-step-num">1</div>
+                    <div class="plan-step-content">
+                        <div class="plan-step-label">When?</div>
+                        <div style="display:flex;gap:10px"><input type="date" class="plan-input" id="plan-date" style="flex:1"><input type="time" class="plan-input" id="plan-time" value="19:00" style="width:120px"></div>
+                    </div>
+                </div>
+                <div class="plan-step">
+                    <div class="plan-step-num">2</div>
+                    <div class="plan-step-content">
+                        <div class="plan-step-label">Suggest restaurants (pick 2-5 for the group to vote on)</div>
+                        <div class="plan-restaurant-chips" id="plan-chips"></div>
+                        <p style="font-size:12px;color:var(--text-muted);margin-top:8px">Showing your shortlist + all restaurants. Click to select.</p>
+                    </div>
+                </div>
+                <div class="plan-step">
+                    <div class="plan-step-num">3</div>
+                    <div class="plan-step-content">
+                        <div class="plan-step-label">Add a note (optional)</div>
+                        <input type="text" class="plan-input" id="plan-note" placeholder="e.g. Birthday dinner for Max!">
+                    </div>
+                </div>
+                <div style="margin-top:8px">
+                    <div class="plan-step-label" style="font-size:12px;color:var(--text-muted);margin-bottom:8px">MESSAGE PREVIEW</div>
+                    <div class="outing-preview" id="plan-preview"></div>
+                    <div style="display:flex;gap:10px;margin-top:14px">
+                        <button class="btn-whatsapp" onclick="sendPlanToWhatsApp()" style="flex:1">Send via WhatsApp</button>
+                        <button class="btn-secondary" onclick="copyPlanMessage()">Copy</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== LEADERBOARD ===== -->
+        <div class="page" id="page-leaderboard">
+            <div class="page-header"><div><h1>Leaderboard</h1><p class="page-subtitle">Who has the best taste? Rankings based on group ratings of your recommendations.</p></div></div>
+            <div id="leaderboard-content"></div>
+            <div class="empty-state" id="leaderboard-empty" style="display:none"><span class="empty-state-icon">🏆</span>No ratings yet! Add restaurants with your personal rating, visit them, then everyone rates. The leaderboard builds over time.</div>
+        </div>
+
+        <!-- ===== CHAT ===== -->
+        <div class="page" id="page-chat">
+            <div class="page-header"><div><h1>Group Chat</h1><p class="page-subtitle">Coordinate, vote, and plan with the group</p></div></div>
+            <div class="chat-container">
+                <div class="chat" id="chat">
+                    <div class="message bot-message"><div class="message-sender">Vienna Planner Bot</div><div class="message-content">Welcome! Use commands to coordinate:<br><b>/dinner 2026-04-05 19:00 Friday dinner</b> — Plan an outing<br><b>/poll</b> — Vote on where to go<br><b>/status</b> — See active plans<br><b>/help</b> — All commands</div></div>
+                </div>
+                <div class="input-area"><input type="text" id="message-input" placeholder="Type a command... (e.g. /help)" autocomplete="off"><button id="send-btn" onclick="sendMessage()">Send</button></div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<!-- Restaurant Detail Slide-over -->
+<div id="detail-bg" class="detail-overlay-bg" style="display:none" onclick="closeDetail()"></div>
+<div id="detail-panel" class="detail-overlay" style="display:none">
+    <div id="detail-content"></div>
+</div>
+
+<!-- Bulk Import Modal -->
+<div class="modal-overlay" id="import-modal" style="display:none">
+    <div class="modal" style="max-width:560px">
+        <div class="modal-header"><h2>Import Restaurants</h2><button class="modal-close" onclick="closeImportModal()">&times;</button></div>
+        <div style="padding:24px">
+            <p style="color:var(--text-secondary);font-size:14px;margin-bottom:16px">Paste Google Maps links or restaurant names — one per line. We'll auto-fill details from Google.</p>
+            <div style="display:flex;gap:8px;margin-bottom:12px">
+                <button class="btn-card" onclick="setImportExample('links')" style="font-size:12px">Example: Links</button>
+                <button class="btn-card" onclick="setImportExample('names')" style="font-size:12px">Example: Names</button>
+            </div>
+            <textarea id="import-textarea" style="width:100%;height:200px;background:var(--bg-input);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:13px;font-family:var(--font-sans);color:var(--text);resize:vertical;outline:none" placeholder="Paste links or names here, one per line:&#10;&#10;https://share.google/abc123&#10;https://maps.app.goo.gl/xyz456&#10;Figlmueller Vienna&#10;Plachutta Wollzeile"></textarea>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+                <span style="font-size:12px;color:var(--text-muted)" id="import-line-count">0 items</span>
+                <span style="flex:1"></span>
+                <span style="font-size:11px;color:var(--text-muted)">Google Maps share links, full URLs, or just restaurant names all work</span>
+            </div>
+            <div id="import-progress" style="display:none;margin-top:16px">
+                <div style="background:var(--border-light);height:6px;border-radius:3px;overflow:hidden">
+                    <div id="import-bar" style="background:var(--accent);height:100%;width:0%;border-radius:3px;transition:width 0.3s"></div>
+                </div>
+                <div id="import-status" style="font-size:13px;color:var(--text-secondary);margin-top:8px;text-align:center"></div>
+            </div>
+            <div id="import-results" style="display:none;margin-top:16px;max-height:200px;overflow-y:auto"></div>
+            <div style="margin-top:16px;display:flex;gap:8px">
+                <button class="btn-accent" style="flex:1" onclick="runBulkImport()" id="import-btn">Import All</button>
+                <button class="btn-secondary" onclick="closeImportModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Profile Setup Modal -->
+<div class="modal-overlay" id="profile-modal" style="display:none">
+    <div class="modal" style="max-width:420px">
+        <div class="modal-header"><h2>Welcome to Vienna Planner</h2></div>
+        <div style="padding:24px">
+            <p style="color:var(--text-secondary);font-size:14px;margin-bottom:20px">Set up your profile so your friends know who's recommending what.</p>
+            <div class="form-group"><label>Your Name <span class="required">*</span></label><input type="text" id="profile-name-input" class="plan-input" placeholder="e.g. Max" autofocus></div>
+            <div style="margin-top:20px"><button class="btn-accent" style="width:100%;padding:12px" onclick="saveProfile()">Get Started</button></div>
+        </div>
+    </div>
+</div>
+
+<!-- Post-Visit Rating Modal -->
+<div class="modal-overlay" id="rate-modal" style="display:none">
+    <div class="modal" style="max-width:440px">
+        <div class="modal-header"><h2>Rate Your Visit</h2><button class="modal-close" onclick="closeRateModal()">&times;</button></div>
+        <div style="padding:24px">
+            <div id="rate-modal-restaurant" style="font-family:var(--font-serif);font-size:18px;font-weight:600;margin-bottom:16px"></div>
+            <div class="form-group"><label>Your rating</label>
+                <div class="star-rating" id="star-rating">
+                    <span class="star" data-v="1" onclick="setStarRating(1)">☆</span>
+                    <span class="star" data-v="2" onclick="setStarRating(2)">☆</span>
+                    <span class="star" data-v="3" onclick="setStarRating(3)">☆</span>
+                    <span class="star" data-v="4" onclick="setStarRating(4)">☆</span>
+                    <span class="star" data-v="5" onclick="setStarRating(5)">☆</span>
+                </div>
+            </div>
+            <div class="form-group" style="margin-top:12px"><label>Comment (optional)</label><input type="text" id="rate-comment" class="plan-input" placeholder="How was it?"></div>
+            <button class="btn-accent" style="width:100%;margin-top:16px;padding:12px" onclick="submitPostRating()">Submit Rating</button>
+        </div>
+    </div>
+</div>
+
+<!-- Add Modal -->
+<div class="modal-overlay" id="modal-overlay" style="display:none"><div class="modal"><div class="modal-header"><h2 id="modal-title">Add Item</h2><button class="modal-close" onclick="closeModal()">&times;</button></div><form id="modal-form"><div id="modal-fields"></div><div class="modal-actions"><button type="button" class="btn-secondary" onclick="closeModal()">Cancel</button><button type="submit" class="btn-primary">Save</button></div></form></div></div>
+
+<script>
+// ===== STATE =====
+let allRestaurants=[], myShortlist=[], pollSelected=[], planSelected=[], restTab='all';
+let currentRateItemId=null, currentStarRating=0;
+
+// ===== PROFILE =====
+function getUser(){
+    const saved=localStorage.getItem('vp_profile');
+    if(saved) return JSON.parse(saved);
+    return {id:1, name:'Guest'};
+}
+
+function showProfileSetup(){
+    document.getElementById('profile-modal').style.display='flex';
+    const inp=document.getElementById('profile-name-input');
+    inp.value=getUser().name==='Guest'?'':getUser().name;
+    inp.focus();
+}
+
+function saveProfile(){
+    const name=document.getElementById('profile-name-input').value.trim();
+    if(!name){alert('Please enter your name');return}
+    const id=Math.abs(name.split('').reduce((a,c)=>((a<<5)-a)+c.charCodeAt(0),0))%10000+100;
+    localStorage.setItem('vp_profile',JSON.stringify({id,name}));
+    document.getElementById('profile-modal').style.display='none';
+    document.getElementById('profile-name-display').textContent=name;
+    showPage(location.hash.slice(1)||'dashboard');
+}
+
+function checkProfile(){
+    const saved=localStorage.getItem('vp_profile');
+    if(saved){
+        const u=JSON.parse(saved);
+        document.getElementById('profile-name-display').textContent=u.name;
+    }else{
+        setTimeout(()=>showProfileSetup(),300);
+    }
+}
+
+// ===== NAV + URL HASH ROUTING =====
+function showPage(p){
+    document.querySelectorAll('.page').forEach(el=>el.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+    document.getElementById('page-'+p).classList.add('active');
+    const navBtn=document.querySelector(`[data-page="${p}"]`);
+    if(navBtn) navBtn.classList.add('active');
+    // Update URL hash without triggering hashchange
+    history.replaceState(null,null,'#'+p);
+    if(p==='dashboard') loadDashboard();
+    if(p==='restaurants'){loadRestaurants();setTimeout(()=>{initMap('restaurant-map','restaurantMap')},200)}
+    if(p==='museums'){loadMuseums();setTimeout(()=>{initMap('museum-map','museumMap')},200)}
+    if(p==='plan') loadPlanPage();
+    if(p==='leaderboard') loadLeaderboard();
+}
+
+window.addEventListener('hashchange',()=>{
+    const page=location.hash.slice(1);
+    if(page&&document.getElementById('page-'+page)) showPage(page);
+});
+
+// ===== MAPS (premium tiles + custom markers) =====
+const TILE_URL='https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+const TILE_ATTR='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>';
+const VIENNA=[48.2082,16.3738];
+
+const CUISINE_COLORS={
+    'Austrian':'#c0392b','Italian':'#27ae60','Japanese':'#8e44ad','Asian':'#e67e22',
+    'Chinese':'#e74c3c','Indian':'#f39c12','Mexican':'#2ecc71','Turkish':'#e74c3c',
+    'Greek':'#2980b9','French':'#2c3e50','American':'#3498db','Vegetarian/Vegan':'#27ae60',
+    'Seafood':'#2980b9','Brunch/Cafe':'#e67e22','Bar/Drinks':'#8e44ad','Korean':'#e91e63',
+    'Vietnamese':'#f39c12','Middle Eastern':'#d35400','Balkan':'#c0392b','Thai':'#e67e22',
+    'default':'#b8963e'
+};
+
+function cuisineColor(c){ return CUISINE_COLORS[c]||CUISINE_COLORS.default; }
+
+function makeMarkerIcon(cuisine, name){
+    const color=cuisineColor(cuisine);
+    const initial=name?name.charAt(0).toUpperCase():'?';
+    return L.divIcon({
+        className:'custom-marker',
+        html:`<div style="
+            width:34px;height:34px;border-radius:50% 50% 50% 4px;
+            background:${color};color:#fff;font-weight:700;font-size:13px;
+            display:flex;align-items:center;justify-content:center;
+            box-shadow:0 3px 12px rgba(0,0,0,0.3);border:2.5px solid #fff;
+            font-family:var(--font-serif);transform:rotate(-45deg);
+        "><span style="transform:rotate(45deg)">${initial}</span></div>`,
+        iconSize:[34,34],
+        iconAnchor:[4,34],
+        popupAnchor:[14,-30]
+    });
+}
+
+function makeMuseumIcon(name){
+    return L.divIcon({
+        className:'custom-marker',
+        html:`<div style="
+            width:36px;height:36px;border-radius:10px;
+            background:#6c5ce7;color:#fff;font-size:16px;
+            display:flex;align-items:center;justify-content:center;
+            box-shadow:0 3px 12px rgba(0,0,0,0.3);border:2.5px solid #fff;
+        ">🖼</div>`,
+        iconSize:[36,36],
+        iconAnchor:[18,36],
+        popupAnchor:[0,-32]
+    });
+}
+
+function makePopupHtml(item){
+    const det=[item.cuisine,item.price_range,item.district?item.district+' Bezirk':null].filter(Boolean).join(' · ');
+    return `<div style="min-width:180px;font-family:var(--font-sans)">
+        <div style="font-family:var(--font-serif);font-size:15px;font-weight:700;margin-bottom:4px">${item.name}</div>
+        <div style="font-size:12px;color:#666;margin-bottom:6px">${det}</div>
+        ${item.avg_rating?'<div style="font-size:13px;color:#b8963e;margin-bottom:4px">⭐ '+Math.round(item.avg_rating*10)/10+'/5</div>':''}
+        ${item.vouch_count?'<div style="font-size:12px;color:#2d8a56">✋ '+item.vouch_count+' vouch'+(item.vouch_count!==1?'es':'')+'</div>':''}
+        <div style="margin-top:8px"><a href="javascript:void(0)" onclick="openDetail(${item.id})" style="color:#b8963e;font-size:12px;font-weight:600;text-decoration:none">View Details →</a></div>
+    </div>`;
+}
+
+let maps={};
+function initMap(elId,key){
+    if(maps[key]){
+        setTimeout(()=>maps[key].invalidateSize(),50);
+        return;
+    }
+    const el=document.getElementById(elId);
+    if(!el||el.offsetWidth===0){
+        setTimeout(()=>initMap(elId,key),250);
+        return;
+    }
+    maps[key]=L.map(elId,{zoomControl:false}).setView(VIENNA,13);
+    L.tileLayer(TILE_URL,{attribution:TILE_ATTR,maxZoom:19}).addTo(maps[key]);
+    L.control.zoom({position:'topright'}).addTo(maps[key]);
+    setTimeout(()=>maps[key].invalidateSize(),300);
+}
+
+let rMarkers=[];
+function updateRestMarkers(items){
+    const m=maps.restaurantMap; if(!m)return;
+    rMarkers.forEach(mk=>m.removeLayer(mk)); rMarkers=[];
+    const bounds=[];
+    items.forEach(item=>{
+        if(!item.lat||!item.lng)return;
+        const mk=L.marker([item.lat,item.lng],{icon:makeMarkerIcon(item.cuisine,item.name)}).addTo(m);
+        mk.bindPopup(makePopupHtml(item),{maxWidth:250});
+        mk.itemId=item.id;
+        mk.on('click',()=>{
+            // Highlight corresponding card
+            document.querySelectorAll('.item-card').forEach(c=>c.style.outline='');
+            const card=document.querySelector(`.item-card[data-id="${item.id}"]`);
+            if(card){card.style.outline='2px solid var(--accent)';card.scrollIntoView({behavior:'smooth',block:'center'})}
+        });
+        rMarkers.push(mk);
+        bounds.push([item.lat,item.lng]);
+    });
+    if(bounds.length>1) m.fitBounds(bounds,{padding:[40,40],maxZoom:15});
+    else if(bounds.length===1) m.setView(bounds[0],14);
+    else m.setView(VIENNA,13);
+}
+
+function highlightMarker(itemId){
+    const mk=rMarkers.find(m=>m.itemId===itemId);
+    if(mk){mk.openPopup();const m=maps.restaurantMap;if(m)m.panTo(mk.getLatLng(),{animate:true,duration:0.3})}
+}
+function unhighlightMarker(itemId){
+    const mk=rMarkers.find(m=>m.itemId===itemId);
+    if(mk) mk.closePopup();
+}
+
+// ===== DASHBOARD =====
+async function loadDashboard(){
+    const[d,m,s]=await Promise.all([fetch('/api/dashboard').then(r=>r.json()),fetch('/api/museums').then(r=>r.json()),fetch('/api/shortlist?user_id='+getUser().id).then(r=>r.json())]);
+    document.getElementById('stat-restaurants').textContent=d.restaurants.length;
+    document.getElementById('stat-museums').textContent=m.museums.length;
+    document.getElementById('stat-shortlist').textContent=s.shortlist.length;
+    document.getElementById('stat-plans').textContent=d.active_plans.length;
+    myShortlist=s.shortlist.map(i=>i.id);
+
+    // Shortlist
+    const sg=document.getElementById('shortlist-grid'),se=document.getElementById('shortlist-empty');
+    if(!s.shortlist.length){sg.innerHTML='';se.style.display='block'}
+    else{se.style.display='none';sg.innerHTML=s.shortlist.map(r=>itemCard(r)).join('')}
+
+    // Trending
+    const trending=d.restaurants.filter(r=>r.flag_count>0).slice(0,6);
+    const tg=document.getElementById('trending-grid'),te=document.getElementById('trending-empty');
+    if(!trending.length){tg.innerHTML='';te.style.display='block'}
+    else{te.style.display='none';tg.innerHTML=trending.map(r=>itemCard(r)).join('')}
+
+    // Expiring
+    const today=new Date().toISOString().split('T')[0];
+    const future=new Date(Date.now()+30*86400000).toISOString().split('T')[0];
+    let exp=[];
+    m.museums.forEach(mu=>mu.exhibitions.forEach(ex=>{if(ex.end_date&&ex.end_date>=today&&ex.end_date<=future)exp.push({...ex,museum_name:mu.name})}));
+    exp.sort((a,b)=>a.end_date.localeCompare(b.end_date));
+    const eg=document.getElementById('expiring-grid'),ee=document.getElementById('expiring-empty');
+    if(!exp.length){eg.innerHTML='';ee.style.display='block'}
+    else{ee.style.display='none';eg.innerHTML=exp.map(ex=>`<div class="item-card" style="cursor:default"><div class="card-badge badge-urgent">${ex.days_remaining}d left</div><div class="card-header">🖼 ${ex.title}</div><div class="card-details">${ex.museum_name}</div><div class="card-meta" style="margin-top:4px">${ex.description||''}</div></div>`).join('')}
+}
+
+// ===== ITEM CARD (Concierge + Social + Cuisine Headers) =====
+function getCuisineClass(cuisine){
+    if(!cuisine) return 'cuisine-default';
+    const c=cuisine.toLowerCase();
+    if(c.includes('austrian')||c.includes('wiener')) return 'cuisine-austrian';
+    if(c.includes('italian')||c.includes('pizza')) return 'cuisine-italian';
+    if(c.includes('japanese')||c.includes('sushi')) return 'cuisine-japanese';
+    if(c.includes('asian')) return 'cuisine-asian';
+    if(c.includes('chinese')) return 'cuisine-chinese';
+    if(c.includes('indian')) return 'cuisine-indian';
+    if(c.includes('mexican')) return 'cuisine-mexican';
+    if(c.includes('turkish')) return 'cuisine-turkish';
+    if(c.includes('greek')||c.includes('mediterranean')) return 'cuisine-greek';
+    if(c.includes('french')) return 'cuisine-french';
+    return 'cuisine-default';
+}
+
+function itemCard(item){
+    const det=[item.cuisine,item.price_range,item.district?item.district+' Bezirk':null].filter(Boolean).join(' · ');
+    const tags=(item.tags&&item.tags.trim())?item.tags.split(',').map(t=>t.trim()).filter(Boolean).map(t=>`<span class="tag">#${t}</span>`).join(''):'';
+    const isShort=myShortlist.includes(item.id);
+    const cuisineClass=getCuisineClass(item.cuisine);
+
+    let recHtml='';
+    if(item.recommender_note||item.recommender_rating){
+        recHtml=`<div class="card-recommender"><div class="card-recommender-name">Recommended by ${item.added_by_name}</div>`;
+        if(item.recommender_note) recHtml+=`<div class="card-recommender-note">"${item.recommender_note}"</div>`;
+        if(item.recommender_rating) recHtml+=`<div class="card-recommender-rating">${'⭐'.repeat(item.recommender_rating)} Personal rating</div>`;
+        recHtml+=`</div>`;
+    }
+
+    let vouchHtml='';
+    if(item.vouch_count>0){
+        const avatars=item.vouch_names.map(n=>`<span class="vouch-avatar">${n.charAt(0)}</span>`).join('');
+        vouchHtml=`<div class="vouch-bar">${avatars} <span>${item.vouch_count} vouch${item.vouch_count!==1?'es':''}</span></div>`;
+    }
+
+    return `<div class="item-card" data-id="${item.id}" onclick="openDetail(${item.id})" onmouseenter="highlightMarker(${item.id})" onmouseleave="unhighlightMarker(${item.id})">
+        <div class="card-cuisine-header ${cuisineClass}"></div>
+        ${item.avg_rating?`<div class="card-badge badge-rating">⭐ ${Math.round(item.avg_rating*10)/10}</div>`:''}
+        <div class="card-header">${item.name}</div>
+        ${det?`<div class="card-details">${det}</div>`:''}
+        ${recHtml}
+        ${vouchHtml}
+        ${tags?`<div class="card-tags">${tags}</div>`:''}
+        <div class="card-social">
+            ${item.flag_count?`<span class="social-item">🚩 ${item.flag_count} interested</span>`:''}
+            <span class="social-item">Added by ${item.added_by_name}</span>
+        </div>
+        <div class="card-actions">
+            <button class="btn-card ${isShort?'shortlisted':''}" onclick="event.stopPropagation();toggleShortlist(${item.id})">${isShort?'📌 Shortlisted':'📌 Shortlist'}</button>
+            <button class="btn-card" onclick="event.stopPropagation();doVouch(${item.id})">✋ Vouch</button>
+            <button class="btn-card" onclick="event.stopPropagation();openRateModal(${item.id},'${item.name.replace(/'/g,"\\'")}')">⭐ Rate Visit</button>
+        </div></div>`;
+}
+
+// ===== RESTAURANTS =====
+function setRestTab(tab,btn){
+    restTab=tab;
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    filterRestaurants();
+}
+
+async function loadRestaurants(){
+    const[d,s]=await Promise.all([fetch('/api/dashboard').then(r=>r.json()),fetch('/api/shortlist?user_id='+getUser().id).then(r=>r.json())]);
+    allRestaurants=d.restaurants;
+    myShortlist=s.shortlist.map(i=>i.id);
+    filterRestaurants();
+    updateRestMarkers(allRestaurants);
+}
+
+function filterRestaurants(){
+    const text=document.getElementById('filter-text').value.toLowerCase();
+    const cuisine=document.getElementById('filter-cuisine').value;
+    const price=document.getElementById('filter-price').value;
+    const district=document.getElementById('filter-district').value;
+    let f=restTab==='shortlist'?allRestaurants.filter(r=>myShortlist.includes(r.id)):allRestaurants;
+    if(text) f=f.filter(r=>(r.name||'').toLowerCase().includes(text)||(r.tags||'').toLowerCase().includes(text)||(r.cuisine||'').toLowerCase().includes(text));
+    if(cuisine) f=f.filter(r=>r.cuisine===cuisine);
+    if(price) f=f.filter(r=>r.price_range===price);
+    if(district) f=f.filter(r=>r.district===district);
+    const hasF=text||cuisine||price||district;
+    document.getElementById('btn-clear').style.display=hasF?'inline-block':'none';
+    document.getElementById('filter-count').textContent=`${f.length} restaurant${f.length!==1?'s':''}`;
+    const g=document.getElementById('restaurants-grid'),e=document.getElementById('restaurants-empty');
+    if(!f.length){g.innerHTML='';e.style.display='block'}else{e.style.display='none';g.innerHTML=f.map(r=>itemCard(r)).join('')}
+    updateRestMarkers(f);
+}
+
+function clearFilters(){['filter-text','filter-cuisine','filter-price','filter-district'].forEach(id=>document.getElementById(id).value='');filterRestaurants()}
+
+// ===== SHORTLIST =====
+async function toggleShortlist(id){
+    const u=getUser();
+    const isIn=myShortlist.includes(id);
+    if(isIn){
+        await fetch('/api/shortlist?user_id='+u.id+'&user_name='+u.name,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({item_id:id})});
+        myShortlist=myShortlist.filter(i=>i!==id);
+    }else{
+        await fetch('/api/shortlist?user_id='+u.id+'&user_name='+u.name,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({item_id:id})});
+        myShortlist.push(id);
+    }
+    const pg=document.querySelector('.page.active').id.replace('page-','');
+    showPage(pg);
+}
+
+// ===== ACTIONS =====
+async function doFlag(id){const u=getUser();await fetch('/api/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'flag',payload:{item_id:id},user_id:u.id,user_name:u.name})});showPage(document.querySelector('.page.active').id.replace('page-',''))}
+
+// ===== POST-VISIT RATING =====
+function openRateModal(id,name){
+    currentRateItemId=id;
+    currentStarRating=0;
+    document.getElementById('rate-modal-restaurant').textContent='🍽 '+name;
+    document.getElementById('rate-comment').value='';
+    document.querySelectorAll('.star').forEach(s=>s.textContent='☆');
+    document.getElementById('rate-modal').style.display='flex';
+}
+
+function closeRateModal(){document.getElementById('rate-modal').style.display='none'}
+
+function setStarRating(v){
+    currentStarRating=v;
+    document.querySelectorAll('.star').forEach(s=>{
+        s.textContent=parseInt(s.dataset.v)<=v?'★':'☆';
+    });
+}
+
+async function submitPostRating(){
+    if(!currentStarRating){alert('Please select a rating');return}
+    const u=getUser();
+    await fetch('/api/post-rate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({item_id:currentRateItemId,user_id:u.id,user_name:u.name,rating:currentStarRating,comment:document.getElementById('rate-comment').value})});
+    // Also update the flag rating
+    await fetch('/api/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'rate',payload:{item_id:currentRateItemId,rating:currentStarRating},user_id:u.id,user_name:u.name})});
+    closeRateModal();
+    showPage(document.querySelector('.page.active').id.replace('page-',''));
+}
+
+function handleItemClick(id){openDetail(id)}
+
+// ===== RESTAURANT DETAIL PANEL =====
+let detailMap=null;
+async function openDetail(id){
+    const res=await fetch('/api/restaurant/'+id).then(r=>r.json());
+    if(res.error){alert(res.error);return}
+    const item=res.item;
+    const cuisineClass=getCuisineClass(item.cuisine);
+    const det=[item.cuisine,item.price_range,item.district?item.district+' Bezirk':null].filter(Boolean).join(' · ');
+    const tags=(item.tags&&item.tags.trim())?item.tags.split(',').map(t=>t.trim()).filter(Boolean).map(t=>`<span class="tag">#${t}</span>`).join(''):'';
+
+    let linksHtml='';
+    if(item.maps_link) linksHtml+=`<a href="${item.maps_link}" target="_blank" class="btn-card" style="display:inline-flex;text-decoration:none">📍 Google Maps</a> `;
+    if(item.website) linksHtml+=`<a href="${item.website}" target="_blank" class="btn-card" style="display:inline-flex;text-decoration:none">🔗 Website</a> `;
+
+    let recHtml='';
+    if(item.recommender_note||item.recommender_rating){
+        recHtml=`<div class="card-recommender" style="margin:0"><div class="card-recommender-name">Recommended by ${item.added_by_name}</div>`;
+        if(item.recommender_note) recHtml+=`<div class="card-recommender-note">"${item.recommender_note}"</div>`;
+        if(item.recommender_rating) recHtml+=`<div class="card-recommender-rating">${'⭐'.repeat(item.recommender_rating)} Personal rating</div>`;
+        recHtml+=`</div>`;
+    }
+
+    let vouchesHtml=res.vouches.map(v=>`<div class="vouch-item"><div class="vouch-avatar">${v.user_name.charAt(0)}</div><div><div class="vouch-item-name">${v.user_name}</div>${v.note?`<div class="vouch-item-note">"${v.note}"</div>`:''}</div></div>`).join('');
+    if(!vouchesHtml) vouchesHtml='<p style="color:var(--text-muted);font-size:13px">No vouches yet. Be the first!</p>';
+
+    let ratingsHtml=res.post_ratings.map(r=>`<div class="rating-item"><div class="vouch-avatar">${r.user_name.charAt(0)}</div><div class="rating-item-stars">${'⭐'.repeat(r.rating)}</div><div style="flex:1"><b>${r.user_name}</b>${r.comment?' — '+r.comment:''}</div></div>`).join('');
+
+    const avgPost=res.post_ratings.length?Math.round(res.post_ratings.reduce((a,r)=>a+r.rating,0)/res.post_ratings.length*10)/10:null;
+
+    document.getElementById('detail-content').innerHTML=`
+        <div class="detail-close" onclick="closeDetail()">✕</div>
+        <div class="card-cuisine-header ${cuisineClass}" style="height:8px;margin:0;border-radius:0"></div>
+        <div class="detail-header">
+            <div class="detail-name">${item.name}</div>
+            <div class="detail-meta">
+                ${det?det+'<br>':''}
+                ${item.address?'📍 '+item.address+'<br>':''}
+                ${item.avg_rating?'⭐ '+Math.round(item.avg_rating*10)/10+'/5 group rating<br>':''}
+                ${avgPost?'📊 '+avgPost+'/5 post-visit avg ('+res.post_ratings.length+' ratings)<br>':''}
+                🚩 ${item.flag_count||0} interested · 📌 ${res.shortlist_count} shortlisted · ✋ ${res.vouches.length} vouches
+            </div>
+            ${tags?'<div class="card-tags" style="margin-top:8px">'+tags+'</div>':''}
+            <div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap">
+                ${linksHtml}
+                <button class="btn-card" onclick="doVouch(${item.id})">✋ Vouch for this</button>
+                <button class="btn-card" onclick="closeDetail();openRateModal(${item.id},'${item.name.replace(/'/g,"\\'")}')">⭐ Rate Visit</button>
+                <button class="btn-card" onclick="doFlag(${item.id})">🚩 Interested</button>
+            </div>
+        </div>
+        ${recHtml?'<div class="detail-section">'+recHtml+'</div>':''}
+        ${item.lat&&item.lng?'<div class="detail-section"><h3>Location</h3><div id="detail-map-el" class="detail-map"></div></div>':''}
+        <div class="detail-section"><h3>Vouches (${res.vouches.length})</h3>${vouchesHtml}</div>
+        ${ratingsHtml?'<div class="detail-section"><h3>Post-Visit Ratings</h3>'+ratingsHtml+'</div>':''}
+    `;
+
+    document.getElementById('detail-bg').style.display='block';
+    document.getElementById('detail-panel').style.display='flex';
+
+    // Init mini map if coordinates exist
+    if(item.lat&&item.lng){
+        setTimeout(()=>{
+            const el=document.getElementById('detail-map-el');
+            if(el&&el.offsetWidth>0){
+                if(detailMap){detailMap.remove();detailMap=null}
+                detailMap=L.map('detail-map-el',{zoomControl:false}).setView([item.lat,item.lng],16);
+                L.tileLayer(TILE_URL,{attribution:TILE_ATTR,maxZoom:19}).addTo(detailMap);
+                L.control.zoom({position:'topright'}).addTo(detailMap);
+                L.marker([item.lat,item.lng],{icon:makeMarkerIcon(item.cuisine,item.name)}).addTo(detailMap).bindPopup(`<b>${item.name}</b><br>${item.address||''}`).openPopup();
+            }
+        },200);
+    }
+}
+
+function closeDetail(){
+    document.getElementById('detail-bg').style.display='none';
+    document.getElementById('detail-panel').style.display='none';
+    if(detailMap){detailMap.remove();detailMap=null}
+}
+
+// ===== VOUCH =====
+async function doVouch(id){
+    const note=prompt('Why do you vouch for this? (optional)');
+    if(note===null) return; // cancelled
+    const u=getUser();
+    await fetch('/api/vouch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({item_id:id,user_id:u.id,user_name:u.name,note:note||''})});
+    // Refresh
+    const pg=document.querySelector('.page.active').id.replace('page-','');
+    showPage(pg);
+    // If detail panel is open, refresh it
+    if(document.getElementById('detail-panel').style.display==='flex') openDetail(id);
+}
+
+// ===== MUSEUMS =====
+async function loadMuseums(){
+    const data=await fetch('/api/museums').then(r=>r.json());
+    const m=maps.museumMap;
+    if(m){data.museums.forEach(mu=>{if(!mu.lat||!mu.lng)return;
+        const mk=L.marker([mu.lat,mu.lng],{icon:makeMuseumIcon(mu.name)}).addTo(m);
+        const exCount=mu.exhibitions.filter(e=>e.is_current).length;
+        mk.bindPopup(`<div style="min-width:180px;font-family:var(--font-sans)"><div style="font-family:var(--font-serif);font-size:15px;font-weight:700;margin-bottom:4px">${mu.name}</div><div style="font-size:12px;color:#666">${mu.district} Bezirk · ${exCount} exhibition${exCount!==1?'s':''}</div>${mu.website?'<div style="margin-top:6px"><a href="'+mu.website+'" target="_blank" style="color:#6c5ce7;font-size:12px">Website ↗</a></div>':''}</div>`,{maxWidth:250});
+    })}
+    document.getElementById('museums-list').innerHTML=data.museums.map(mu=>{
+        const cur=mu.exhibitions.filter(e=>e.is_current);
+        return `<div class="museum-card"><div class="museum-header"><div class="museum-info"><h2>${mu.name}</h2><div class="museum-meta">📍 ${mu.district} Bezirk · ${mu.address} ${mu.website?`· <a href="${mu.website}" target="_blank">Website ↗</a>`:''}</div><div class="museum-desc">${mu.description}</div></div></div>${cur.length?`<div class="exhibitions-section"><h3>Now Showing</h3><div class="exhibitions-grid">${cur.map(ex=>{
+            let badge='';if(ex.days_remaining!=null&&ex.days_remaining<=14&&ex.days_remaining>=0)badge=`<div class="card-badge badge-urgent">${ex.days_remaining}d left</div>`;else if(ex.is_current)badge=`<div class="card-badge badge-current">Now Showing</div>`;
+            return `<div class="exhibition-card">${badge}<div class="exhibition-title">${ex.title}</div><div class="exhibition-dates">📅 ${ex.start_date||'?'} → ${ex.end_date||'ongoing'}</div><div class="exhibition-desc">${ex.description||''}</div><div class="exhibition-price">${ex.price||''}</div></div>`;
+        }).join('')}</div></div>`:''}</div>`;
+    }).join('');
+}
+
+// ===== PLAN PAGE =====
+async function loadPlanPage(){
+    const[d,s]=await Promise.all([fetch('/api/dashboard').then(r=>r.json()),fetch('/api/shortlist?user_id='+getUser().id).then(r=>r.json())]);
+    const shortIds=s.shortlist.map(i=>i.id);
+    // Show shortlisted first, then the rest
+    const sorted=[...d.restaurants.filter(r=>shortIds.includes(r.id)),...d.restaurants.filter(r=>!shortIds.includes(r.id))];
+    const chips=document.getElementById('plan-chips');
+    chips.innerHTML=sorted.map(r=>`<div class="plan-chip ${planSelected.includes(r.id)?'selected':''}" onclick="togglePlanSelect(${r.id},'${r.name.replace(/'/g,"\\'")}',this)">${shortIds.includes(r.id)?'📌 ':''}${r.name}${r.cuisine?' · '+r.cuisine:''}</div>`).join('');
+    updatePlanPreview();
+    ['plan-date','plan-time','plan-note'].forEach(id=>document.getElementById(id).removeEventListener('input',updatePlanPreview));
+    ['plan-date','plan-time','plan-note'].forEach(id=>document.getElementById(id).addEventListener('input',updatePlanPreview));
+}
+
+function togglePlanSelect(id,name,el){
+    const idx=planSelected.findIndex(s=>s.id===id);
+    if(idx>=0){planSelected.splice(idx,1);el.classList.remove('selected')}
+    else if(planSelected.length<5){planSelected.push({id,name});el.classList.add('selected')}
+    else{alert('Max 5 restaurants');return}
+    updatePlanPreview();
+}
+
+function updatePlanPreview(){
+    const date=document.getElementById('plan-date').value||'(pick a date)';
+    const time=document.getElementById('plan-time').value||'19:00';
+    const note=document.getElementById('plan-note').value;
+    const names=planSelected.map(s=>s.name);
+    let msg=`🇦🇹 *Vienna Group Planner*\n\nHey! Let's plan an outing:\n\n📅 *${date} at ${time}*\n`;
+    if(note) msg+=`💬 ${note}\n`;
+    if(names.length){
+        msg+=`\nRestaurant options:\n`;
+        names.forEach((n,i)=>msg+=`${i+1}. ${n}\n`);
+        msg+=`\nVote by replying with the number!`;
+    }else{msg+=`\n(Select restaurants above)`}
+    document.getElementById('plan-preview').textContent=msg;
+}
+
+function sendPlanToWhatsApp(){
+    const text=document.getElementById('plan-preview').textContent;
+    window.open('https://wa.me/?text='+encodeURIComponent(text),'_blank');
+    // Also create event in system
+    const date=document.getElementById('plan-date').value;
+    const time=document.getElementById('plan-time').value||'19:00';
+    const note=document.getElementById('plan-note').value;
+    if(date){const u=getUser();fetch('/api/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:`/dinner ${date} ${time} ${note||'Group Outing'}`,user_id:u.id,user_name:u.name})})}
+}
+
+function copyPlanMessage(){navigator.clipboard.writeText(document.getElementById('plan-preview').textContent).then(()=>alert('Copied!'))}
+
+// ===== LEADERBOARD (interactive) =====
+async function loadLeaderboard(){
+    const data=await fetch('/api/leaderboard').then(r=>r.json());
+    const el=document.getElementById('leaderboard-content');
+    const empty=document.getElementById('leaderboard-empty');
+    if(!data.leaderboard.length){
+        el.innerHTML=`<div style="text-align:center;padding:40px">
+            <div style="font-size:48px;margin-bottom:16px">🏆</div>
+            <h3 style="font-family:var(--font-serif);margin-bottom:8px">No Rankings Yet</h3>
+            <p style="color:var(--text-muted);font-size:14px;max-width:400px;margin:0 auto">Add restaurants with your personal rating, visit them with the group, then everyone rates. The leaderboard builds automatically!</p>
+            <div style="display:flex;gap:20px;justify-content:center;margin-top:24px">
+                <div style="text-align:center"><div style="font-size:24px">1️⃣</div><div style="font-size:12px;color:var(--text-muted);margin-top:4px">Add & rate<br>restaurants</div></div>
+                <div style="text-align:center"><div style="font-size:24px">2️⃣</div><div style="font-size:12px;color:var(--text-muted);margin-top:4px">Visit with<br>the group</div></div>
+                <div style="text-align:center"><div style="font-size:24px">3️⃣</div><div style="font-size:12px;color:var(--text-muted);margin-top:4px">Everyone rates<br>the experience</div></div>
+                <div style="text-align:center"><div style="font-size:24px">🏆</div><div style="font-size:12px;color:var(--text-muted);margin-top:4px">Rankings<br>update!</div></div>
+            </div>
+        </div>`;
+        empty.style.display='none';
+        return;
+    }
+    empty.style.display='none';
+    const medals=['🥇','🥈','🥉'];
+    const titles=['The Foodie','The Connoisseur','The Explorer','The Adventurer','The Pioneer','The Trailblazer'];
+    const maxScore=Math.max(...data.leaderboard.map(r=>r.avg_group_rating||0),5);
+
+    el.innerHTML=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:28px;text-align:center">
+        ${data.leaderboard.slice(0,3).map((r,i)=>`<div style="background:var(--bg-card);border:1px solid ${i===0?'var(--accent)':'var(--border-light)'};border-radius:var(--radius-lg);padding:24px 16px;box-shadow:${i===0?'var(--shadow-md)':'var(--shadow-sm)'};${i===0?'transform:scale(1.02)':''}">
+            <div style="font-size:36px">${medals[i]}</div>
+            <div style="font-family:var(--font-serif);font-size:18px;font-weight:700;margin:8px 0 2px">${r.added_by_name}</div>
+            <div style="font-size:12px;color:var(--text-muted)">${r.total_recs} rec${r.total_recs!==1?'s':''}</div>
+            <div style="margin:12px 0">
+                <div style="font-family:var(--font-serif);font-size:28px;font-weight:700;color:var(--accent)">${r.avg_group_rating||'—'}</div>
+                <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px">Group Score</div>
+            </div>
+            <div style="background:var(--accent-muted);color:var(--accent);padding:4px 12px;border-radius:20px;display:inline-block;font-size:11px;font-weight:600">${titles[i]}</div>
+        </div>`).join('')}
+    </div>
+    ${data.leaderboard.length>3?'<h3 style="font-family:var(--font-serif);margin-bottom:12px">Full Rankings</h3>':''}
+    ${data.leaderboard.map((r,i)=>{
+        const barW=r.avg_group_rating?Math.round((r.avg_group_rating/5)*100):0;
+        const recBarW=r.avg_recommender_rating?Math.round((r.avg_recommender_rating/5)*100):0;
+        return `<div class="leaderboard-item" style="animation:fadeIn 0.3s ease ${i*0.05}s both">
+            <div class="leaderboard-rank">${medals[i]||'<span style="color:var(--text-muted)">'+(i+1)+'.</span>'}</div>
+            <div class="leaderboard-name">${r.added_by_name}<br><span style="font-size:11px;color:var(--text-muted)">${r.total_recs} recommendation${r.total_recs!==1?'s':''} · ${r.total_group_reviews} review${r.total_group_reviews!==1?'s':''}</span></div>
+            <div class="leaderboard-stat" style="min-width:100px">
+                <div class="leaderboard-stat-value">${r.avg_group_rating||'—'}<span style="font-size:11px;color:var(--text-muted)">/5</span></div>
+                <div style="background:var(--border-light);height:4px;border-radius:2px;margin-top:4px;overflow:hidden"><div style="background:var(--accent);height:100%;width:${barW}%;border-radius:2px;transition:width 0.8s ease"></div></div>
+                <div class="leaderboard-stat-label">Group Score</div>
+            </div>
+            <div class="leaderboard-stat" style="min-width:100px">
+                <div class="leaderboard-stat-value">${r.avg_recommender_rating||'—'}<span style="font-size:11px;color:var(--text-muted)">/5</span></div>
+                <div style="background:var(--border-light);height:4px;border-radius:2px;margin-top:4px;overflow:hidden"><div style="background:var(--blue);height:100%;width:${recBarW}%;border-radius:2px;transition:width 0.8s ease"></div></div>
+                <div class="leaderboard-stat-label">Their Rating</div>
+            </div>
+            ${r.accuracy!=null?`<div class="leaderboard-stat"><div class="leaderboard-stat-value" style="color:${r.accuracy<=0.5?'var(--green)':r.accuracy<=1?'var(--accent)':'var(--red)'}">${r.accuracy}</div><div class="leaderboard-stat-label">Accuracy Gap</div></div>`:''}
+            <div class="leaderboard-title-badge">${titles[i]||'Contributor'}</div>
+        </div>`;
+    }).join('')}`;
+}
+
+// ===== MAPS LOOKUP =====
+async function lookupMaps(){
+    const url=document.getElementById('maps-link-input').value.trim();if(!url)return;
+    const btn=document.getElementById('maps-lookup-btn');btn.textContent='Looking up...';btn.disabled=true;
+    try{const res=await fetch('/api/maps-lookup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});const r=await res.json();if(r.error)showMapsPreview(null,r.error);else showMapsPreview(r.data,r.message,r.source)}
+    catch(e){showMapsPreview(null,'Error: '+e.message)}
+    finally{btn.textContent='Add from Maps';btn.disabled=false}
+}
+
+function showMapsPreview(data,msg,src){
+    const p=document.getElementById('maps-preview');
+    if(!data){p.style.display='block';p.innerHTML=`<div class="maps-error">${msg}</div>`;return}
+    const rating=data.rating?`<span class="maps-rating">⭐ ${data.rating}${data.rating_count?' ('+data.rating_count+')':''}</span>`:'';
+    const note=src==='url_parse'?`<div class="maps-note">${msg}</div>`:'';
+    p.style.display='block';
+    p.innerHTML=`<div class="maps-result"><div class="maps-result-header"><div class="maps-result-name">🍽 ${data.name}</div>${rating}</div><div class="maps-result-details">${data.address?'📍 '+data.address+'<br>':''}${data.district?'District: '+data.district+'<br>':''}${data.cuisine?'Cuisine: '+data.cuisine+'<br>':''}${data.price_range?'Price: '+data.price_range+'<br>':''}${data.primary_type?'Type: '+data.primary_type:''}</div>${note}<div style="display:flex;flex-direction:column;gap:8px;margin-top:10px"><div class="form-group"><label>Your note (why you recommend this)</label><input type="text" id="maps-rec-note" class="maps-tags-input" placeholder="e.g. Best schnitzel in Vienna, trust me!"></div><div class="form-group"><label>Your personal rating (1-5)</label><select id="maps-rec-rating" style="background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px"><option value="">—</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select></div><div class="form-group"><label>Tags</label><input type="text" id="maps-tags" class="maps-tags-input" placeholder="rooftop, datenight..."></div></div><div class="maps-result-actions" style="margin-top:12px"><button class="btn-accent" onclick="saveMapsResult()">Save Restaurant</button><button class="btn-secondary" onclick="document.getElementById('maps-preview').style.display='none'">Cancel</button></div></div>`;
+    window._mapsData=data;
+}
+
+async function saveMapsResult(){
+    const d=window._mapsData;if(!d)return;const u=getUser();
+    await fetch('/api/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'add_save',payload:{item_type:'restaurant',name:d.name,cuisine:d.cuisine||'',price_range:d.price_range||'',district:d.district||'',address:d.address||'',maps_link:d.maps_link||'',website:d.website||'',tags:document.getElementById('maps-tags').value,lat:d.lat,lng:d.lng,recommender_note:document.getElementById('maps-rec-note').value,recommender_rating:document.getElementById('maps-rec-rating').value},user_id:u.id,user_name:u.name})});
+    document.getElementById('maps-preview').style.display='none';document.getElementById('maps-link-input').value='';window._mapsData=null;loadRestaurants();
+}
+
+// ===== BULK IMPORT =====
+function openImportModal(){
+    document.getElementById('import-modal').style.display='flex';
+    document.getElementById('import-textarea').value='';
+    document.getElementById('import-progress').style.display='none';
+    document.getElementById('import-results').style.display='none';
+    document.getElementById('import-btn').disabled=false;
+    document.getElementById('import-btn').textContent='Import All';
+    updateImportCount();
+    document.getElementById('import-textarea').addEventListener('input',updateImportCount);
+}
+
+function closeImportModal(){document.getElementById('import-modal').style.display='none'}
+
+function updateImportCount(){
+    const lines=document.getElementById('import-textarea').value.split('\n').filter(l=>l.trim());
+    document.getElementById('import-line-count').textContent=lines.length+' item'+(lines.length!==1?'s':'');
+}
+
+function setImportExample(type){
+    const ta=document.getElementById('import-textarea');
+    if(type==='links'){
+        ta.value='https://share.google/RoA6iRhVJj3QXkTT0\nhttps://www.google.com/maps/place/Figlm%C3%BCller\nhttps://www.google.com/maps/place/Mochi+Vienna';
+    }else{
+        ta.value='Plachutta Wollzeile\nFiglmueller Vienna\nMochi Vienna\nDisco Volante Vienna\nSwing Kitchen Vienna';
+    }
+    updateImportCount();
+}
+
+async function runBulkImport(){
+    const lines=document.getElementById('import-textarea').value.split('\n').filter(l=>l.trim());
+    if(!lines.length){alert('Paste some links or names first');return}
+
+    const btn=document.getElementById('import-btn');
+    btn.disabled=true;
+    btn.textContent='Importing...';
+    document.getElementById('import-progress').style.display='block';
+    document.getElementById('import-results').style.display='none';
+
+    const u=getUser();
+    const bar=document.getElementById('import-bar');
+    const status=document.getElementById('import-status');
+    status.textContent=`Importing ${lines.length} restaurants via Google Places API...`;
+    bar.style.width='10%';
+
+    try{
+        const res=await fetch('/api/bulk-import',{
+            method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({items:lines,user_id:u.id,user_name:u.name})
+        });
+        const data=await res.json();
+
+        bar.style.width='100%';
+        status.textContent=`Done! ${data.imported} imported, ${data.errors} failed.`;
+
+        // Show results
+        const resultsEl=document.getElementById('import-results');
+        resultsEl.style.display='block';
+        resultsEl.innerHTML=data.results.map(r=>{
+            if(r.status==='ok'){
+                return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border-light)">
+                    <span style="color:var(--green);font-size:16px">✓</span>
+                    <span style="flex:1;font-size:13px"><b>${r.name}</b> — ${[r.cuisine,r.district,r.rating?'⭐'+r.rating:''].filter(Boolean).join(' · ')}</span>
+                </div>`;
+            }else if(r.status==='partial'){
+                return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border-light)">
+                    <span style="color:var(--accent);font-size:16px">~</span>
+                    <span style="flex:1;font-size:13px"><b>${r.name}</b> — saved (limited details)</span>
+                </div>`;
+            }else{
+                return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border-light)">
+                    <span style="color:var(--red);font-size:16px">✗</span>
+                    <span style="flex:1;font-size:13px">${r.input||'?'} — ${r.error}</span>
+                </div>`;
+            }
+        }).join('');
+
+        btn.textContent='Done!';
+        // Refresh restaurants after a moment
+        setTimeout(()=>{loadRestaurants()},500);
+
+    }catch(err){
+        bar.style.width='100%';
+        bar.style.background='var(--red)';
+        status.textContent='Error: '+err.message;
+        btn.textContent='Retry';
+        btn.disabled=false;
+    }
+}
+
+// ===== ADD MODAL =====
+function openAddModal(type){
+    const fields={
+        restaurant:[{name:'name',label:'Name',type:'text',required:true},{name:'cuisine',label:'Cuisine',type:'select',options:['Austrian','Italian','Asian','Japanese','Chinese','Thai','Indian','Mexican','Middle Eastern','Greek','French','American','Balkan','Turkish','Vietnamese','Korean','Vegetarian/Vegan','Seafood','Brunch/Cafe','Bar/Drinks','Other']},{name:'price_range',label:'Price',type:'select',options:['€','€€','€€€','€€€€']},{name:'district',label:'District',type:'select',options:[...Array(23)].map((_,i)=>(i+1)+'.')},{name:'maps_link',label:'Google Maps Link',type:'text'},{name:'recommender_note',label:'Your recommendation note',type:'text',placeholder:'Why do you recommend this?'},{name:'recommender_rating',label:'Your personal rating (1-5)',type:'select',options:['1','2','3','4','5']},{name:'tags',label:'Tags',type:'text',placeholder:'rooftop, datenight...'}],
+        event:[{name:'name',label:'Event Name',type:'text',required:true},{name:'category',label:'Category',type:'select',options:['Concert','Festival','Market','Theater','Cinema','Nightlife','Sports','Workshop','Other']},{name:'district',label:'District',type:'select',options:[...Array(23)].map((_,i)=>(i+1)+'.')},{name:'start_date',label:'Start Date',type:'date'},{name:'end_date',label:'End Date',type:'date'},{name:'price_range',label:'Price',type:'select',options:['Free','€','€€','€€€']},{name:'tags',label:'Tags',type:'text'}]
+    };
+    document.getElementById('modal-title').textContent={restaurant:'Add Restaurant',event:'Add Event'}[type]||'Add Item';
+    const el=document.getElementById('modal-fields');el.innerHTML='';
+    (fields[type]||fields.restaurant).forEach(f=>{
+        const g=document.createElement('div');g.className='form-group';
+        const l=document.createElement('label');l.innerHTML=f.label+(f.required?' <span class="required">*</span>':'');g.appendChild(l);
+        let inp;
+        if(f.type==='select'){inp=document.createElement('select');inp.innerHTML='<option value="">—</option>'+f.options.map(o=>`<option>${o}</option>`).join('')}
+        else if(f.type==='date'){inp=document.createElement('input');inp.type='date'}
+        else{inp=document.createElement('input');inp.type='text';if(f.placeholder)inp.placeholder=f.placeholder}
+        inp.name=f.name;inp.id='form-'+f.name;if(f.required)inp.required=true;g.appendChild(inp);el.appendChild(g);
+    });
+    document.getElementById('modal-overlay').style.display='flex';
+    document.getElementById('modal-form').onsubmit=async(e)=>{e.preventDefault();const fd={item_type:type};(fields[type]||fields.restaurant).forEach(f=>{const v=document.getElementById('form-'+f.name);if(v&&v.value)fd[f.name]=v.value});closeModal();const u=getUser();await fetch('/api/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'add_save',payload:fd,user_id:u.id,user_name:u.name})});showPage(document.querySelector('.page.active').id.replace('page-',''))};
+}
+function closeModal(){document.getElementById('modal-overlay').style.display='none'}
+
+// ===== CHAT =====
+const chatEl=document.getElementById('chat'),inputEl=document.getElementById('message-input');
+inputEl.addEventListener('keydown',e=>{if(e.key==='Enter')sendMessage()});
+async function sendMessage(){const t=inputEl.value.trim();if(!t)return;inputEl.value='';const u=getUser();addMsg(t,'user',u.name);try{const r=await fetch('/api/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t,user_id:u.id,user_name:u.name})});renderBot((await r.json()).messages)}catch(e){addMsg('Error: '+e.message,'bot')}}
+async function doAction(action,payload){const u=getUser();if(action==='poll_toggle'){const id=payload.item_id;const i=pollSelected.indexOf(id);if(i>=0)pollSelected.splice(i,1);else pollSelected.push(id);addMsg(pollSelected.length+' selected','bot','Bot');return}if(action==='poll_launch'){payload.selected_ids=pollSelected;pollSelected=[]}try{const r=await fetch('/api/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,payload,user_id:u.id,user_name:u.name})});renderBot((await r.json()).messages)}catch(e){addMsg('Error: '+e.message,'bot')}}
+function renderBot(msgs){msgs.forEach(m=>{if(m.type==='text')addMsg(m.text,'bot');else if(m.type==='html')addMsg(m.text,'bot',null,true);else if(m.type==='card')addCard(m.card);else if(m.type==='buttons')addBtns(m.buttons);else if(m.type==='form')openAddModal(m.form.item_type)});chatEl.scrollTop=chatEl.scrollHeight}
+function addMsg(t,type,sender,html){const w=document.createElement('div');w.className=`message ${type}-message`;if(sender||type==='bot'){const s=document.createElement('div');s.className='message-sender';s.textContent=type==='bot'?'Vienna Planner Bot':sender;w.appendChild(s)}const c=document.createElement('div');c.className='message-content';if(html)c.innerHTML=t;else c.textContent=t;w.appendChild(c);chatEl.appendChild(w);chatEl.scrollTop=chatEl.scrollHeight}
+function addCard(card){const w=document.createElement('div');w.className='message bot-message';let h=`<div class="item-card" style="cursor:default"><div class="card-header">${card.emoji} ${card.name} <span class="card-id">#${card.id}</span></div>`;if(card.details.length)h+=`<div class="card-details">${card.details.join(' · ')}</div>`;if(card.tags)h+=`<div class="card-tags">${card.tags.map(t=>`<span class="tag">${t}</span>`).join('')}</div>`;if(card.flag_count!==undefined){h+=`<div class="card-social"><span class="social-item">🚩 ${card.flag_count}</span>`;if(card.avg_rating)h+=`<span class="social-item">⭐ ${card.avg_rating}/5</span>`;h+=`</div>`}h+=`<div class="card-meta">Added by ${card.added_by}</div></div>`;const c=document.createElement('div');c.className='message-content';c.innerHTML=h;w.appendChild(c);chatEl.appendChild(w)}
+function addBtns(buttons){const w=document.createElement('div');w.className='button-group';buttons.forEach(b=>{const btn=document.createElement('button');btn.className='chat-btn';if(b.action==='simulate_rsvps'||b.action==='simulate_votes')btn.classList.add('simulate-btn');btn.textContent=b.label;btn.onclick=()=>{btn.disabled=true;btn.classList.add('clicked');doAction(b.action,b.payload||{})};w.appendChild(btn)});chatEl.appendChild(w);chatEl.scrollTop=chatEl.scrollHeight}
+
+// ===== INIT =====
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeModal();closeRateModal();document.getElementById('profile-modal').style.display='none'}});
+document.getElementById('profile-name-input').addEventListener('keydown',e=>{if(e.key==='Enter')saveProfile()});
+
+// Profile + hash routing on load
+checkProfile();
+const startPage=location.hash.slice(1)||'dashboard';
+if(document.getElementById('page-'+startPage)) showPage(startPage);
+else loadDashboard();
+</script>
+</body>
+</html>

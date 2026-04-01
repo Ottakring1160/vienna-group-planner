@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vienna Group Planner</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="app">
+        <header class="header">
+            <div class="header-left">
+                <div class="header-icon">🇦🇹</div>
+                <div>
+                    <h1>Vienna Group Planner</h1>
+                    <span class="header-subtitle">12 members</span>
+                </div>
+            </div>
+            <div class="user-switcher">
+                <label for="user-select">Acting as:</label>
+                <select id="user-select">
+                    {% for m in members %}
+                    <option value="{{ m.id }}" data-name="{{ m.name }}">{{ m.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </header>
+
+        <div class="chat" id="chat">
+            <div class="message bot-message">
+                <div class="message-sender">Vienna Planner Bot</div>
+                <div class="message-content">
+                    Welcome to the <b>Vienna Group Planner</b>! 🇦🇹<br><br>
+                    This is your group's hub for restaurants, exhibitions, events, and activities in Vienna.<br><br>
+                    Type <b>/help</b> to see all commands, or try:<br>
+                    • <b>/add</b> — Add a restaurant or activity<br>
+                    • <b>/dinner 2026-04-05 19:00 Friday dinner</b> — Plan an outing<br>
+                    • <b>/trending</b> — See what's popular<br><br>
+                    <i>Tip: Use the "Acting as" dropdown to simulate different group members!</i>
+                </div>
+            </div>
+        </div>
+
+        <div class="input-area">
+            <input type="text" id="message-input" placeholder="Type a command... (e.g. /help)" autocomplete="off">
+            <button id="send-btn" onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+
+    <!-- Form Modal -->
+    <div class="modal-overlay" id="modal-overlay" style="display:none;">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 id="modal-title">Add Item</h2>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <form id="modal-form">
+                <div id="modal-fields"></div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary" onclick="closeModal()">Cancel</button>
+                    <button type="submit" class="btn-primary">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const chatEl = document.getElementById('chat');
+        const inputEl = document.getElementById('message-input');
+        let currentFormData = {};
+        let pollSelected = [];
+
+        function getUser() {
+            const sel = document.getElementById('user-select');
+            return {
+                id: parseInt(sel.value),
+                name: sel.options[sel.selectedIndex].dataset.name
+            };
+        }
+
+        inputEl.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+
+        async function sendMessage() {
+            const text = inputEl.value.trim();
+            if (!text) return;
+            inputEl.value = '';
+
+            const user = getUser();
+            addMessage(text, 'user', user.name);
+
+            try {
+                const res = await fetch('/api/send', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({text, user_id: user.id, user_name: user.name})
+                });
+                const data = await res.json();
+                renderBotMessages(data.messages);
+            } catch (err) {
+                addMessage('Error: ' + err.message, 'bot');
+            }
+        }
+
+        async function doAction(action, payload) {
+            const user = getUser();
+
+            // Special handling for poll toggle
+            if (action === 'poll_toggle') {
+                const itemId = payload.item_id;
+                const idx = pollSelected.indexOf(itemId);
+                if (idx >= 0) {
+                    pollSelected.splice(idx, 1);
+                } else {
+                    pollSelected.push(itemId);
+                }
+                addMessage(`${pollSelected.length} restaurant(s) selected for poll`, 'bot', 'Vienna Planner Bot');
+                return;
+            }
+
+            // For poll launch, include selected IDs
+            if (action === 'poll_launch') {
+                payload.selected_ids = pollSelected;
+                pollSelected = [];
+            }
+
+            try {
+                const res = await fetch('/api/action', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({action, payload, user_id: user.id, user_name: user.name})
+                });
+                const data = await res.json();
+                renderBotMessages(data.messages);
+            } catch (err) {
+                addMessage('Error: ' + err.message, 'bot');
+            }
+        }
+
+        function renderBotMessages(messages) {
+            messages.forEach(msg => {
+                if (msg.type === 'text') {
+                    addMessage(msg.text, 'bot');
+                } else if (msg.type === 'html') {
+                    addMessage(msg.text, 'bot', null, true);
+                } else if (msg.type === 'card') {
+                    addCard(msg.card);
+                } else if (msg.type === 'buttons') {
+                    addButtons(msg.buttons);
+                } else if (msg.type === 'form') {
+                    showForm(msg.form);
+                }
+            });
+            scrollToBottom();
+        }
+
+        function addMessage(text, type, sender, isHtml) {
+            const wrapper = document.createElement('div');
+            wrapper.className = `message ${type}-message`;
+
+            if (sender) {
+                const senderEl = document.createElement('div');
+                senderEl.className = 'message-sender';
+                senderEl.textContent = type === 'bot' ? 'Vienna Planner Bot' : sender;
+                wrapper.appendChild(senderEl);
+            }
+
+            const content = document.createElement('div');
+            content.className = 'message-content';
+            if (isHtml) {
+                content.innerHTML = text;
+            } else {
+                content.textContent = text;
+            }
+            wrapper.appendChild(content);
+            chatEl.appendChild(wrapper);
+            scrollToBottom();
+        }
+
+        function addCard(card) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'message bot-message';
+
+            let html = `<div class="item-card">
+                <div class="card-header">${card.emoji} <b>${card.name}</b> <span class="card-id">#${card.id}</span></div>`;
+
+            if (card.details.length) {
+                html += `<div class="card-details">${card.details.join(' | ')}</div>`;
+            }
+            if (card.dates) {
+                html += `<div class="card-dates">📅 ${card.dates}</div>`;
+            }
+            if (card.tags) {
+                html += `<div class="card-tags">${card.tags.map(t => `<span class="tag">${t}</span>`).join(' ')}</div>`;
+            }
+            if (card.maps_link) {
+                html += `<div class="card-link">📍 <a href="${card.maps_link}" target="_blank">Google Maps</a></div>`;
+            } else if (card.address) {
+                html += `<div class="card-link">📍 ${card.address}</div>`;
+            }
+            if (card.website) {
+                html += `<div class="card-link">🔗 <a href="${card.website}" target="_blank">Website</a></div>`;
+            }
+            if (card.ticket_link) {
+                html += `<div class="card-link">🎫 <a href="${card.ticket_link}" target="_blank">Tickets</a></div>`;
+            }
+            if (card.flag_count !== undefined) {
+                html += `<div class="card-stats">🚩 ${card.flag_count} interested`;
+                if (card.avg_rating) html += ` | ⭐ ${card.avg_rating}/5`;
+                html += `</div>`;
+            }
+            html += `<div class="card-meta">Added by ${card.added_by}</div></div>`;
+
+            const content = document.createElement('div');
+            content.className = 'message-content';
+            content.innerHTML = html;
+            wrapper.appendChild(content);
+            chatEl.appendChild(wrapper);
+        }
+
+        function addButtons(buttons) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'button-group';
+
+            buttons.forEach(btn => {
+                const button = document.createElement('button');
+                button.className = 'chat-btn';
+                button.textContent = btn.label;
+                if (btn.action === 'simulate_rsvps' || btn.action === 'simulate_votes') {
+                    button.classList.add('simulate-btn');
+                }
+                button.onclick = () => {
+                    button.disabled = true;
+                    button.classList.add('clicked');
+                    doAction(btn.action, btn.payload || {});
+                };
+                wrapper.appendChild(button);
+            });
+
+            chatEl.appendChild(wrapper);
+            scrollToBottom();
+        }
+
+        function showForm(form) {
+            currentFormData = {item_type: form.item_type};
+            const titleMap = {
+                restaurant: 'Add Restaurant',
+                exhibition: 'Add Exhibition',
+                event: 'Add Event',
+                activity: 'Add Activity'
+            };
+            document.getElementById('modal-title').textContent = titleMap[form.item_type] || 'Add Item';
+
+            const fieldsEl = document.getElementById('modal-fields');
+            fieldsEl.innerHTML = '';
+
+            form.fields.forEach(field => {
+                const group = document.createElement('div');
+                group.className = 'form-group';
+
+                const label = document.createElement('label');
+                label.textContent = field.label;
+                if (field.required) label.innerHTML += ' <span class="required">*</span>';
+                group.appendChild(label);
+
+                let input;
+                if (field.type === 'select') {
+                    input = document.createElement('select');
+                    input.innerHTML = '<option value="">— Select —</option>';
+                    field.options.forEach(opt => {
+                        const o = document.createElement('option');
+                        o.value = opt;
+                        o.textContent = opt;
+                        input.appendChild(o);
+                    });
+                } else if (field.type === 'date') {
+                    input = document.createElement('input');
+                    input.type = 'date';
+                } else {
+                    input = document.createElement('input');
+                    input.type = 'text';
+                    if (field.placeholder) input.placeholder = field.placeholder;
+                }
+
+                input.name = field.name;
+                input.id = 'form-' + field.name;
+                if (field.required) input.required = true;
+                group.appendChild(input);
+                fieldsEl.appendChild(group);
+            });
+
+            document.getElementById('modal-overlay').style.display = 'flex';
+
+            document.getElementById('modal-form').onsubmit = (e) => {
+                e.preventDefault();
+                const formData = {item_type: form.item_type};
+                form.fields.forEach(field => {
+                    const el = document.getElementById('form-' + field.name);
+                    if (el && el.value) formData[field.name] = el.value;
+                });
+                closeModal();
+                doAction('add_save', formData);
+            };
+        }
+
+        function closeModal() {
+            document.getElementById('modal-overlay').style.display = 'none';
+        }
+
+        function scrollToBottom() {
+            chatEl.scrollTop = chatEl.scrollHeight;
+        }
+
+        // Quick command buttons
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeModal();
+        });
+    </script>
+</body>
+</html>
