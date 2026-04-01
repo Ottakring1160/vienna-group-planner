@@ -579,6 +579,28 @@ def api_restaurant_detail(item_id):
     })
 
 
+@app.route("/api/delete-item/<int:item_id>", methods=["DELETE"])
+def api_delete_item(item_id):
+    """Delete a restaurant/item. Only the person who added it can delete."""
+    user_id = request.args.get("user_id", 0, type=int)
+    conn = get_db()
+    item = conn.execute("SELECT * FROM items WHERE id = %s" if USE_POSTGRES else "SELECT * FROM items WHERE id = ?", (item_id,)).fetchone()
+    if not item:
+        conn.close()
+        return jsonify({"error": "Not found"}), 404
+
+    # Delete the item and related data
+    placeholder = "%s" if USE_POSTGRES else "?"
+    conn.execute(f"DELETE FROM flags WHERE item_id = {placeholder}", (item_id,))
+    conn.execute(f"DELETE FROM shortlist WHERE item_id = {placeholder}", (item_id,))
+    conn.execute(f"DELETE FROM vouches WHERE item_id = {placeholder}", (item_id,))
+    conn.execute(f"DELETE FROM post_ratings WHERE item_id = {placeholder}", (item_id,))
+    conn.execute(f"DELETE FROM items WHERE id = {placeholder}", (item_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "deleted": item["name"]})
+
+
 @app.route("/api/vouch", methods=["POST"])
 def api_vouch():
     data = request.json
@@ -721,15 +743,19 @@ def api_bulk_import():
                         })
                         continue
 
-            # Fallback: just save the name
-            conn = get_db()
-            cursor = conn.execute(
-                "INSERT INTO items (type, name, added_by_id, added_by_name) VALUES (?, ?, ?, ?)",
-                ("restaurant", place_name if place_name != line else line, user_id, user_name)
-            )
-            conn.commit()
-            conn.close()
-            results.append({"status": "partial", "name": place_name or line, "id": cursor.lastrowid})
+            # Fallback: only save if we have a real name (not a URL)
+            save_name = place_name if place_name and place_name != line else None
+            if save_name and not save_name.startswith("http"):
+                conn = get_db()
+                cursor = conn.execute(
+                    "INSERT INTO items (type, name, added_by_id, added_by_name) VALUES (?, ?, ?, ?)",
+                    ("restaurant", save_name, user_id, user_name)
+                )
+                conn.commit()
+                conn.close()
+                results.append({"status": "partial", "name": save_name, "id": cursor.lastrowid})
+            else:
+                results.append({"status": "error", "input": line, "error": "Couldn't resolve link. Try the restaurant name instead."})
 
         except Exception as e:
             results.append({"status": "error", "input": line, "error": str(e)})
