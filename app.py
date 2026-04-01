@@ -294,6 +294,87 @@ def init_db():
             created_at TEXT DEFAULT (datetime('now')),
             FOREIGN KEY (museum_id) REFERENCES museums(id)
         );
+
+        CREATE TABLE IF NOT EXISTS destinations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            region TEXT,
+            country TEXT DEFAULT 'Austria',
+            description TEXT,
+            duration_type TEXT NOT NULL,
+            distance_km INTEGER,
+            lat REAL,
+            lng REAL,
+            image_url TEXT,
+            oebb_link TEXT,
+            has_airport INTEGER DEFAULT 0,
+            tags TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS trips (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id INTEGER,
+            destination_id INTEGER,
+            destination_custom TEXT,
+            trip_type TEXT NOT NULL,
+            meal_type TEXT,
+            start_date TEXT NOT NULL,
+            end_date TEXT,
+            num_people INTEGER,
+            budget_notes TEXT,
+            notes TEXT,
+            created_by_id INTEGER,
+            created_by_name TEXT,
+            status TEXT DEFAULT 'draft',
+            created_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (event_id) REFERENCES events(id),
+            FOREIGN KEY (destination_id) REFERENCES destinations(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS trip_transport (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trip_id INTEGER NOT NULL,
+            mode TEXT NOT NULL,
+            description TEXT,
+            link TEXT,
+            departure_time TEXT,
+            arrival_time TEXT,
+            price TEXT,
+            driver_name TEXT,
+            seats_available INTEGER,
+            created_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (trip_id) REFERENCES trips(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS trip_accommodation (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trip_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            link TEXT,
+            price_per_night REAL,
+            price_per_person REAL,
+            num_rooms INTEGER,
+            check_in TEXT,
+            check_out TEXT,
+            notes TEXT,
+            price_updated_at TEXT DEFAULT (datetime('now')),
+            created_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (trip_id) REFERENCES trips(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS trip_activities (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trip_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            location TEXT,
+            link TEXT,
+            time_slot TEXT,
+            day_number INTEGER DEFAULT 1,
+            price TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (trip_id) REFERENCES trips(id)
+        );
     """)
     conn.commit()
     conn.close()
@@ -613,6 +694,139 @@ def api_vouch():
     conn.commit()
     conn.close()
     return jsonify({"ok": True})
+
+
+@app.route("/api/destinations", methods=["GET"])
+def api_destinations():
+    dtype = request.args.get("type")
+    conn = get_db()
+    if dtype:
+        dests = conn.execute("SELECT * FROM destinations WHERE duration_type = ? ORDER BY distance_km", (dtype,)).fetchall()
+    else:
+        dests = conn.execute("SELECT * FROM destinations ORDER BY duration_type, distance_km").fetchall()
+    conn.close()
+    return jsonify({"destinations": [dict(d) for d in dests]})
+
+
+@app.route("/api/trips", methods=["GET", "POST"])
+def api_trips():
+    if request.method == "POST":
+        data = request.json
+        conn = get_db()
+
+        # Create event first (for polling/availability reuse)
+        dest_name = data.get("destination_custom", "")
+        if data.get("destination_id"):
+            dest = conn.execute("SELECT name FROM destinations WHERE id = ?", (data["destination_id"],)).fetchone()
+            if dest:
+                dest_name = dest["name"]
+
+        trip_type = data.get("trip_type", "day_trip")
+        meal_type = data.get("meal_type", "")
+        if trip_type == "restaurant":
+            title = f"{meal_type or 'Meal'} — {dest_name or 'TBD'}" if dest_name else f"{meal_type or 'Restaurant Outing'}"
+        else:
+            type_labels = {"day_trip": "Day Trip", "overnight": "Trip", "week": "Week Trip"}
+            title = f"{type_labels.get(trip_type, 'Trip')} to {dest_name}" if dest_name else f"{type_labels.get(trip_type, 'Trip')}"
+
+        event_cursor = conn.execute(
+            "INSERT INTO events (title, date, time, status, created_by_id, created_by_name, quorum) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (title, data.get("start_date", ""), data.get("time", "TBD"), "planning",
+             data.get("user_id", 1), data.get("user_name", "Guest"), 4)
+        )
+        event_id = event_cursor.lastrowid
+        conn.commit()
+
+        # Create trip
+        trip_cursor = conn.execute(
+            "INSERT INTO trips (event_id, destination_id, destination_custom, trip_type, meal_type, start_date, end_date, num_people, notes, created_by_id, created_by_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (event_id, data.get("destination_id"), data.get("destination_custom"),
+             trip_type, meal_type,
+             data.get("start_date", ""), data.get("end_date"),
+             data.get("num_people"), data.get("notes"),
+             data.get("user_id", 1), data.get("user_name", "Guest"))
+        )
+        trip_id = trip_cursor.lastrowid
+        conn.commit()
+
+        # Add transport options
+        for t in data.get("transport", []):
+            conn.execute(
+                "INSERT INTO trip_transport (trip_id, mode, description, link, departure_time, arrival_time, price, driver_name, seats_available) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (trip_id, t.get("mode"), t.get("description"), t.get("link"),
+                 t.get("departure_time"), t.get("arrival_time"), t.get("price"),
+                 t.get("driver_name"), t.get("seats_available"))
+            )
+
+        # Add accommodation
+        for a in data.get("accommodation", []):
+            conn.execute(
+                "INSERT INTO trip_accommodation (trip_id, name, link, price_per_night, price_per_person, num_rooms, check_in, check_out, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (trip_id, a.get("name"), a.get("link"), a.get("price_per_night"),
+                 a.get("price_per_person"), a.get("num_rooms"),
+                 a.get("check_in"), a.get("check_out"), a.get("notes"))
+            )
+
+        # Add activities
+        for act in data.get("activities", []):
+            conn.execute(
+                "INSERT INTO trip_activities (trip_id, name, description, location, link, time_slot, day_number, price) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (trip_id, act.get("name"), act.get("description"), act.get("location"),
+                 act.get("link"), act.get("time_slot"), act.get("day_number", 1), act.get("price"))
+            )
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({"ok": True, "trip_id": trip_id, "event_id": event_id, "title": title})
+
+    # GET — list all trips
+    conn = get_db()
+    trips = conn.execute("""
+        SELECT t.*, e.title as event_title, e.status as event_status, e.date as event_date,
+               d.name as dest_name, d.region as dest_region, d.image_url as dest_image
+        FROM trips t
+        LEFT JOIN events e ON t.event_id = e.id
+        LEFT JOIN destinations d ON t.destination_id = d.id
+        ORDER BY t.created_at DESC
+    """).fetchall()
+    conn.close()
+    return jsonify({"trips": [dict(t) for t in trips]})
+
+
+@app.route("/api/trips/<int:trip_id>", methods=["GET"])
+def api_trip_detail(trip_id):
+    conn = get_db()
+    trip = conn.execute("""
+        SELECT t.*, e.title as event_title, e.status as event_status,
+               d.name as dest_name, d.region as dest_region, d.description as dest_desc,
+               d.lat as dest_lat, d.lng as dest_lng, d.oebb_link, d.has_airport
+        FROM trips t
+        LEFT JOIN events e ON t.event_id = e.id
+        LEFT JOIN destinations d ON t.destination_id = d.id
+        WHERE t.id = ?
+    """, (trip_id,)).fetchone()
+    if not trip:
+        conn.close()
+        return jsonify({"error": "Trip not found"}), 404
+
+    transport = conn.execute("SELECT * FROM trip_transport WHERE trip_id = ?", (trip_id,)).fetchall()
+    accommodation = conn.execute("SELECT * FROM trip_accommodation WHERE trip_id = ?", (trip_id,)).fetchall()
+    activities = conn.execute("SELECT * FROM trip_activities WHERE trip_id = ? ORDER BY day_number, time_slot", (trip_id,)).fetchall()
+
+    # Get availability
+    avail = []
+    if trip["event_id"]:
+        avail = conn.execute("SELECT * FROM availability WHERE event_id = ?", (trip["event_id"],)).fetchall()
+
+    conn.close()
+    return jsonify({
+        "trip": dict(trip),
+        "transport": [dict(t) for t in transport],
+        "accommodation": [dict(a) for a in accommodation],
+        "activities": [dict(a) for a in activities],
+        "availability": [dict(a) for a in avail]
+    })
 
 
 @app.route("/api/bulk-import", methods=["POST"])
@@ -1921,10 +2135,43 @@ def format_item_card(item):
     return card
 
 
+def seed_destinations():
+    """Seed Austrian trip destinations."""
+    conn = get_db()
+    existing = conn.execute("SELECT COUNT(*) as c FROM destinations").fetchone()
+    if existing["c"] > 0:
+        conn.close()
+        return
+
+    dests = [
+        ("Wachau Valley", "Lower Austria", "Austria", "UNESCO wine region along the Danube. Wine tasting, Melk Abbey, Durnstein.", "day_trip", 80, 48.3667, 15.4167, "https://www.oebb.at", 0, "wine,danube,abbey,nature,cycling"),
+        ("Baden bei Wien", "Lower Austria", "Austria", "Spa town with thermal baths, vineyards, and Beethoven history.", "day_trip", 26, 48.0069, 16.2310, "https://www.oebb.at", 0, "spa,thermal,wine,beethoven"),
+        ("Bratislava", "Slovakia", "Slovakia", "Just an hour by train. Castle, old town, great food and nightlife.", "day_trip", 65, 48.1486, 17.1077, "https://www.oebb.at", 1, "city,castle,international,food"),
+        ("Semmering", "Lower Austria", "Austria", "UNESCO railway, hiking, mountain views. Grand hotel heritage.", "day_trip", 100, 47.6333, 15.8333, "https://www.oebb.at", 0, "hiking,mountains,railway,unesco"),
+        ("Neusiedler See", "Burgenland", "Austria", "Steppe lake, birdwatching, cycling, wine villages.", "day_trip", 60, 47.8333, 16.7667, "https://www.oebb.at", 0, "lake,cycling,wine,nature"),
+        ("Salzburg", "Salzburg", "Austria", "Mozart's birthplace. Fortress, old town, Sound of Music, lakes nearby.", "overnight", 295, 47.8095, 13.0550, "https://www.oebb.at", 1, "city,culture,mozart,fortress,lakes"),
+        ("Graz", "Styria", "Austria", "UNESCO old town, Kunsthaus, culinary capital of Austria.", "overnight", 200, 47.0707, 15.4395, "https://www.oebb.at", 1, "city,culture,food,university"),
+        ("Hallstatt", "Upper Austria", "Austria", "Iconic lakeside village, salt mines, breathtaking alpine scenery.", "overnight", 295, 47.5622, 13.6493, "https://www.oebb.at", 0, "lake,mountains,village,photography"),
+        ("Linz", "Upper Austria", "Austria", "Ars Electronica, Danube riverfront, Linzer Torte. Digital art capital.", "overnight", 185, 48.3069, 14.2858, "https://www.oebb.at", 1, "city,technology,art,danube"),
+        ("Innsbruck", "Tyrol", "Austria", "Alpine capital. Golden Roof, Nordkette cable car, world-class skiing.", "overnight", 475, 47.2692, 11.4041, "https://www.oebb.at", 1, "mountains,skiing,city,alpine"),
+        ("Tyrol Region", "Tyrol", "Austria", "Week of hiking, mountain huts, alpine lakes. Zillertal, Stubai, Oetztal.", "week", 475, 47.2533, 11.6013, "https://www.oebb.at", 1, "hiking,mountains,alpine,huts"),
+        ("Salzkammergut", "Upper Austria", "Austria", "Lake district paradise. Swimming, hiking, charming villages.", "week", 270, 47.7167, 13.6167, "https://www.oebb.at", 0, "lakes,hiking,swimming,villages"),
+        ("Carinthia Lakes", "Carinthia", "Austria", "Warmest lakes in Austria. Worthersee, Millstattersee. Summer paradise.", "week", 320, 46.6247, 14.3050, "https://www.oebb.at", 1, "lakes,swimming,cycling,warm"),
+    ]
+
+    for d in dests:
+        conn.execute(
+            "INSERT INTO destinations (name, region, country, description, duration_type, distance_km, lat, lng, oebb_link, has_airport, tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", d
+        )
+    conn.commit()
+    conn.close()
+
+
 # Initialize DB on import (needed for gunicorn on Render)
 try:
     init_db()
     seed_museums()
+    seed_destinations()
 except Exception as e:
     print(f"DB init warning: {e}")
 

@@ -113,35 +113,124 @@
 
         <!-- ===== PLAN OUTING ===== -->
         <div class="page" id="page-plan">
-            <div class="page-header"><div><h1>Plan an Outing</h1><p class="page-subtitle">Pick a date, suggest restaurants, send to the group</p></div></div>
-            <div class="plan-form">
-                <div class="plan-step">
-                    <div class="plan-step-num">1</div>
-                    <div class="plan-step-content">
-                        <div class="plan-step-label">When?</div>
-                        <div style="display:flex;gap:10px"><input type="date" class="plan-input" id="plan-date" style="flex:1"><input type="time" class="plan-input" id="plan-time" value="19:00" style="width:120px"></div>
-                    </div>
+            <div class="page-header"><div><h1>Plan Something</h1><p class="page-subtitle">Restaurants, day trips, or week-long adventures — plan it all here</p></div></div>
+
+            <!-- Type Selector -->
+            <div class="plan-type-grid" id="plan-type-grid">
+                <div class="plan-type-card" onclick="selectPlanType('restaurant',this)">
+                    <div class="plan-type-icon">🍽</div>
+                    <div class="plan-type-name">Restaurant</div>
+                    <div class="plan-type-desc">Brunch, lunch, or dinner with the group</div>
                 </div>
-                <div class="plan-step">
-                    <div class="plan-step-num">2</div>
-                    <div class="plan-step-content">
-                        <div class="plan-step-label">Suggest restaurants (pick 2-5 for the group to vote on)</div>
+                <div class="plan-type-card" onclick="selectPlanType('day_trip',this)">
+                    <div class="plan-type-icon">🚂</div>
+                    <div class="plan-type-name">Day Trip</div>
+                    <div class="plan-type-desc">Explore within a few hours of Vienna</div>
+                </div>
+                <div class="plan-type-card" onclick="selectPlanType('overnight',this)">
+                    <div class="plan-type-icon">🏨</div>
+                    <div class="plan-type-name">Overnight Trip</div>
+                    <div class="plan-type-desc">Weekend getaway, 1-3 nights</div>
+                </div>
+                <div class="plan-type-card" onclick="selectPlanType('week',this)">
+                    <div class="plan-type-icon">✈️</div>
+                    <div class="plan-type-name">Week Trip</div>
+                    <div class="plan-type-desc">Longer adventure, 4+ nights</div>
+                </div>
+            </div>
+
+            <!-- Wizard Steps (hidden until type selected) -->
+            <div id="trip-wizard" style="display:none">
+                <!-- Restaurant-specific: Meal type -->
+                <div id="step-meal" class="wizard-step" style="display:none">
+                    <div class="plan-step"><div class="plan-step-num">1</div><div class="plan-step-content">
+                        <div class="plan-step-label">What kind of meal?</div>
+                        <div class="plan-type-grid" style="grid-template-columns:repeat(3,1fr)">
+                            <div class="plan-type-card small" onclick="setMealType('Brunch',this)"><div class="plan-type-icon">🥐</div><div class="plan-type-name">Brunch</div></div>
+                            <div class="plan-type-card small" onclick="setMealType('Lunch',this)"><div class="plan-type-icon">🥗</div><div class="plan-type-name">Lunch</div></div>
+                            <div class="plan-type-card small" onclick="setMealType('Dinner',this)"><div class="plan-type-icon">🍷</div><div class="plan-type-name">Dinner</div></div>
+                        </div>
+                    </div></div>
+                </div>
+
+                <!-- Restaurant picker (for restaurant type) -->
+                <div id="step-restaurants" class="wizard-step" style="display:none">
+                    <div class="plan-step"><div class="plan-step-num">2</div><div class="plan-step-content">
+                        <div class="plan-step-label">Suggest restaurants (pick 2-5)</div>
                         <div class="plan-restaurant-chips" id="plan-chips"></div>
-                        <p style="font-size:12px;color:var(--text-muted);margin-top:8px">Showing your shortlist + all restaurants. Click to select.</p>
-                    </div>
+                        <p style="font-size:12px;color:var(--text-muted);margin-top:6px">Your shortlisted restaurants appear first</p>
+                    </div></div>
                 </div>
-                <div class="plan-step">
-                    <div class="plan-step-num">3</div>
-                    <div class="plan-step-content">
-                        <div class="plan-step-label">Add a note (optional)</div>
-                        <input type="text" class="plan-input" id="plan-note" placeholder="e.g. Birthday dinner for Max!">
-                    </div>
+
+                <!-- Destination (for trips) -->
+                <div id="step-destination" class="wizard-step" style="display:none">
+                    <div class="plan-step"><div class="plan-step-num">1</div><div class="plan-step-content">
+                        <div class="plan-step-label">Where to?</div>
+                        <div class="destination-grid" id="dest-grid"></div>
+                        <div style="margin-top:12px">
+                            <input type="text" class="plan-input" id="dest-custom" placeholder="Or type a custom destination..." oninput="tripState.destination_custom=this.value;updateTripPreview()">
+                        </div>
+                    </div></div>
                 </div>
-                <div style="margin-top:8px">
-                    <div class="plan-step-label" style="font-size:12px;color:var(--text-muted);margin-bottom:8px">MESSAGE PREVIEW</div>
+
+                <!-- When -->
+                <div id="step-when" class="wizard-step">
+                    <div class="plan-step"><div class="plan-step-num" id="when-num">2</div><div class="plan-step-content">
+                        <div class="plan-step-label">When?</div>
+                        <div style="display:flex;gap:10px;flex-wrap:wrap">
+                            <div style="flex:1;min-width:140px"><label class="plan-field-label">Start date</label><input type="date" class="plan-input" id="plan-date" onchange="tripState.start_date=this.value;updateTripPreview()"></div>
+                            <div id="end-date-wrap" style="flex:1;min-width:140px"><label class="plan-field-label">End date</label><input type="date" class="plan-input" id="plan-end-date" onchange="tripState.end_date=this.value;updateTripPreview()"></div>
+                            <div style="width:100px"><label class="plan-field-label">Time</label><input type="time" class="plan-input" id="plan-time" value="19:00" onchange="updateTripPreview()"></div>
+                            <div style="width:100px"><label class="plan-field-label">People</label><select class="plan-input" id="plan-people" onchange="tripState.num_people=parseInt(this.value);updateTripPreview()"><option value="">—</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>10</option><option>12</option><option>15</option></select></div>
+                        </div>
+                    </div></div>
+                </div>
+
+                <!-- Transport (trips only) -->
+                <div id="step-transport" class="wizard-step" style="display:none">
+                    <div class="plan-step"><div class="plan-step-num">3</div><div class="plan-step-content">
+                        <div class="plan-step-label">Getting there</div>
+                        <div style="display:flex;gap:8px;margin-bottom:12px">
+                            <button class="plan-toggle-btn" id="btn-train" onclick="addTransport('train')">🚂 Train</button>
+                            <button class="plan-toggle-btn" id="btn-flight" onclick="addTransport('flight')">✈️ Flight</button>
+                            <button class="plan-toggle-btn" id="btn-car" onclick="addTransport('car')">🚗 Car</button>
+                        </div>
+                        <div id="transport-cards"></div>
+                    </div></div>
+                </div>
+
+                <!-- Accommodation (overnight+ only) -->
+                <div id="step-accommodation" class="wizard-step" style="display:none">
+                    <div class="plan-step"><div class="plan-step-num">4</div><div class="plan-step-content">
+                        <div class="plan-step-label">Where to stay</div>
+                        <div id="accommodation-cards"></div>
+                        <button class="btn-outline" style="margin-top:8px;font-size:12px" onclick="addAccommodation()">+ Add accommodation option</button>
+                    </div></div>
+                </div>
+
+                <!-- Activities -->
+                <div id="step-activities" class="wizard-step" style="display:none">
+                    <div class="plan-step"><div class="plan-step-num" id="act-num">5</div><div class="plan-step-content">
+                        <div class="plan-step-label">Activities</div>
+                        <div id="activity-cards"></div>
+                        <button class="btn-outline" style="margin-top:8px;font-size:12px" onclick="addActivity()">+ Add activity</button>
+                    </div></div>
+                </div>
+
+                <!-- Note -->
+                <div id="step-note" class="wizard-step">
+                    <div class="plan-step"><div class="plan-step-num" id="note-num">6</div><div class="plan-step-content">
+                        <div class="plan-step-label">Note to the group (optional)</div>
+                        <input type="text" class="plan-input" id="plan-note" placeholder="e.g. Birthday trip for Sophie!" oninput="tripState.notes=this.value;updateTripPreview()">
+                    </div></div>
+                </div>
+
+                <!-- Preview + Send -->
+                <div class="wizard-step" style="margin-top:20px">
+                    <div style="font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text-muted);margin-bottom:8px">WhatsApp Message Preview</div>
                     <div class="outing-preview" id="plan-preview"></div>
                     <div style="display:flex;gap:10px;margin-top:14px">
-                        <button class="btn-whatsapp" onclick="sendPlanToWhatsApp()" style="flex:1">Send via WhatsApp</button>
+                        <button class="btn-whatsapp" onclick="sendTripToWhatsApp()" style="flex:1;padding:14px">Send via WhatsApp</button>
                         <button class="btn-secondary" onclick="copyPlanMessage()">Copy</button>
                     </div>
                 </div>
@@ -731,50 +820,271 @@ async function loadMuseums(){
     }).join('');
 }
 
-// ===== PLAN PAGE =====
+// ===== PLAN PAGE (Trip Wizard) =====
+let tripState = {type:null, meal_type:'', destination_id:null, destination_custom:'', start_date:'', end_date:'', num_people:null, transport:[], accommodation:[], activities:[], notes:''};
+let allDestinations = [];
+
 async function loadPlanPage(){
-    const[d,s]=await Promise.all([fetch('/api/dashboard').then(r=>r.json()),fetch('/api/shortlist?user_id='+getUser().id).then(r=>r.json())]);
+    const[d,s,dests]=await Promise.all([
+        fetch('/api/dashboard').then(r=>r.json()),
+        fetch('/api/shortlist?user_id='+getUser().id).then(r=>r.json()),
+        fetch('/api/destinations').then(r=>r.json())
+    ]);
+    allDestinations=dests.destinations;
+    // Load restaurant chips
     const shortIds=s.shortlist.map(i=>i.id);
-    // Show shortlisted first, then the rest
     const sorted=[...d.restaurants.filter(r=>shortIds.includes(r.id)),...d.restaurants.filter(r=>!shortIds.includes(r.id))];
     const chips=document.getElementById('plan-chips');
-    chips.innerHTML=sorted.map(r=>`<div class="plan-chip ${planSelected.includes(r.id)?'selected':''}" onclick="togglePlanSelect(${r.id},'${r.name.replace(/'/g,"\\'")}',this)">${shortIds.includes(r.id)?'📌 ':''}${r.name}${r.cuisine?' · '+r.cuisine:''}</div>`).join('');
-    updatePlanPreview();
-    ['plan-date','plan-time','plan-note'].forEach(id=>document.getElementById(id).removeEventListener('input',updatePlanPreview));
-    ['plan-date','plan-time','plan-note'].forEach(id=>document.getElementById(id).addEventListener('input',updatePlanPreview));
+    if(chips) chips.innerHTML=sorted.map(r=>`<div class="plan-chip ${planSelected.find(p=>p.id===r.id)?'selected':''}" onclick="togglePlanSelect(${r.id},'${r.name.replace(/'/g,"\\'")}',this)">${shortIds.includes(r.id)?'📌 ':''}${cuisineIcon(r.cuisine)} ${r.name}</div>`).join('');
+    // Reset wizard visibility based on current type
+    if(tripState.type) selectPlanType(tripState.type, document.querySelector(`.plan-type-card[data-type="${tripState.type}"]`), true);
+}
+
+function selectPlanType(type, el, noReset){
+    if(!noReset){
+        tripState={type, meal_type:'', destination_id:null, destination_custom:'', start_date:'', end_date:'', num_people:null, transport:[], accommodation:[], activities:[], notes:''};
+        planSelected=[];
+    }
+    tripState.type=type;
+    document.querySelectorAll('#plan-type-grid .plan-type-card').forEach(c=>{c.classList.remove('selected');c.removeAttribute('data-type')});
+    if(el){el.classList.add('selected');el.dataset.type=type}
+    document.getElementById('trip-wizard').style.display='block';
+
+    const isRestaurant=type==='restaurant';
+    const isTrip=!isRestaurant;
+    const isOvernight=type==='overnight'||type==='week';
+
+    document.getElementById('step-meal').style.display=isRestaurant?'block':'none';
+    document.getElementById('step-restaurants').style.display=isRestaurant?'block':'none';
+    document.getElementById('step-destination').style.display=isTrip?'block':'none';
+    document.getElementById('step-transport').style.display=isTrip?'block':'none';
+    document.getElementById('step-accommodation').style.display=isOvernight?'block':'none';
+    document.getElementById('step-activities').style.display=isTrip?'block':'none';
+    document.getElementById('end-date-wrap').style.display=(type==='day_trip'||isRestaurant)?'none':'block';
+
+    // Load destinations filtered by type
+    if(isTrip) renderDestinations(type);
+    updateTripPreview();
+}
+
+function setMealType(type, el){
+    tripState.meal_type=type;
+    document.querySelectorAll('#step-meal .plan-type-card').forEach(c=>c.classList.remove('selected'));
+    el.classList.add('selected');
+    updateTripPreview();
+}
+
+function renderDestinations(tripType){
+    const typeMap={'day_trip':'day_trip','overnight':'overnight','week':'week'};
+    const filtered=allDestinations.filter(d=>d.duration_type===typeMap[tripType]);
+    const grid=document.getElementById('dest-grid');
+    grid.innerHTML=filtered.map(d=>`
+        <div class="destination-card ${tripState.destination_id===d.id?'selected':''}" onclick="selectDestination(${d.id},this)">
+            <div class="dest-name">${d.name}</div>
+            <div class="dest-region">${d.region}${d.country!=='Austria'?' · '+d.country:''}</div>
+            <div class="dest-meta">${d.distance_km}km · ${d.has_airport?'✈️ Airport':'🚂 Train'}</div>
+            <div class="dest-desc">${d.description}</div>
+            <div class="dest-tags">${(d.tags||'').split(',').map(t=>'<span class="tag">'+t.trim()+'</span>').join('')}</div>
+        </div>
+    `).join('');
+}
+
+function selectDestination(id, el){
+    tripState.destination_id=id;
+    tripState.destination_custom='';
+    document.getElementById('dest-custom').value='';
+    document.querySelectorAll('.destination-card').forEach(c=>c.classList.remove('selected'));
+    el.classList.add('selected');
+    updateTripPreview();
 }
 
 function togglePlanSelect(id,name,el){
     const idx=planSelected.findIndex(s=>s.id===id);
     if(idx>=0){planSelected.splice(idx,1);el.classList.remove('selected')}
     else if(planSelected.length<5){planSelected.push({id,name});el.classList.add('selected')}
-    else{alert('Max 5 restaurants');return}
-    updatePlanPreview();
+    else{alert('Max 5');return}
+    updateTripPreview();
 }
 
-function updatePlanPreview(){
-    const date=document.getElementById('plan-date').value||'(pick a date)';
-    const time=document.getElementById('plan-time').value||'19:00';
-    const note=document.getElementById('plan-note').value;
-    const names=planSelected.map(s=>s.name);
-    let msg=`🇦🇹 *Vienna Group Planner*\n\nHey! Let's plan an outing:\n\n📅 *${date} at ${time}*\n`;
-    if(note) msg+=`💬 ${note}\n`;
-    if(names.length){
-        msg+=`\nRestaurant options:\n`;
-        names.forEach((n,i)=>msg+=`${i+1}. ${n}\n`);
-        msg+=`\nVote by replying with the number!`;
-    }else{msg+=`\n(Select restaurants above)`}
-    document.getElementById('plan-preview').textContent=msg;
+// Transport management
+let transportCounter=0;
+function addTransport(mode){
+    const id='tr_'+(++transportCounter);
+    const icons={train:'🚂',flight:'✈️',car:'🚗'};
+    tripState.transport.push({id,mode});
+    const container=document.getElementById('transport-cards');
+    const card=document.createElement('div');
+    card.className='transport-card';card.id=id;
+    if(mode==='train'){
+        card.innerHTML=`<div class="tc-header">${icons[mode]} Train <button class="tc-remove" onclick="removeTransport('${id}')">&times;</button></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <input class="plan-input" placeholder="Description (e.g. OBB Railjet)" style="flex:1" oninput="updateTransportField('${id}','description',this.value)">
+                <input class="plan-input" placeholder="Departs" type="time" style="width:110px" oninput="updateTransportField('${id}','departure_time',this.value)">
+                <input class="plan-input" placeholder="Price" style="width:80px" oninput="updateTransportField('${id}','price',this.value)">
+                <input class="plan-input" placeholder="Booking link" style="flex:1;min-width:200px" oninput="updateTransportField('${id}','link',this.value)">
+            </div>`;
+    }else if(mode==='flight'){
+        card.innerHTML=`<div class="tc-header">${icons[mode]} Flight (from Vienna VIE) <button class="tc-remove" onclick="removeTransport('${id}')">&times;</button></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <input class="plan-input" placeholder="Airline / flight" style="flex:1" oninput="updateTransportField('${id}','description',this.value)">
+                <input class="plan-input" placeholder="Departs" type="time" style="width:110px" oninput="updateTransportField('${id}','departure_time',this.value)">
+                <input class="plan-input" placeholder="Price" style="width:80px" oninput="updateTransportField('${id}','price',this.value)">
+                <input class="plan-input" placeholder="Booking link" style="flex:1;min-width:200px" oninput="updateTransportField('${id}','link',this.value)">
+            </div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:6px">Search: <a href="https://www.austrian.com" target="_blank">Austrian</a> · <a href="https://www.ryanair.com" target="_blank">Ryanair</a> · <a href="https://wizzair.com" target="_blank">Wizz Air</a></div>`;
+    }else{
+        card.innerHTML=`<div class="tc-header">${icons[mode]} Car <button class="tc-remove" onclick="removeTransport('${id}')">&times;</button></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <input class="plan-input" placeholder="Driver name" style="flex:1" oninput="updateTransportField('${id}','driver_name',this.value)">
+                <input class="plan-input" placeholder="Seats available" type="number" min="1" max="7" style="width:120px" oninput="updateTransportField('${id}','seats_available',parseInt(this.value))">
+            </div>`;
+    }
+    container.appendChild(card);
+    updateTripPreview();
 }
 
-function sendPlanToWhatsApp(){
+function updateTransportField(id,field,value){
+    const t=tripState.transport.find(t=>t.id===id);
+    if(t) t[field]=value;
+    updateTripPreview();
+}
+
+function removeTransport(id){
+    tripState.transport=tripState.transport.filter(t=>t.id!==id);
+    const el=document.getElementById(id);
+    if(el) el.remove();
+    updateTripPreview();
+}
+
+// Accommodation management
+let accomCounter=0;
+function addAccommodation(){
+    const id='ac_'+(++accomCounter);
+    tripState.accommodation.push({id});
+    const container=document.getElementById('accommodation-cards');
+    const card=document.createElement('div');
+    card.className='transport-card';card.id=id;
+    card.innerHTML=`<div class="tc-header">🏨 Accommodation <button class="tc-remove" onclick="removeAccom('${id}')">&times;</button></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <input class="plan-input" placeholder="Hotel/Airbnb name" style="flex:1" oninput="updateAccomField('${id}','name',this.value)">
+            <input class="plan-input" placeholder="Link" style="flex:1;min-width:200px" oninput="updateAccomField('${id}','link',this.value)">
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+            <input class="plan-input" placeholder="Price/night" type="number" style="width:100px" oninput="updateAccomField('${id}','price_per_night',this.value)">
+            <input class="plan-input" placeholder="Rooms" type="number" style="width:80px" oninput="updateAccomField('${id}','num_rooms',this.value)">
+            <input class="plan-input" placeholder="Notes" style="flex:1" oninput="updateAccomField('${id}','notes',this.value)">
+        </div>`;
+    container.appendChild(card);
+    updateTripPreview();
+}
+
+function updateAccomField(id,field,value){const a=tripState.accommodation.find(a=>a.id===id);if(a)a[field]=value;updateTripPreview()}
+function removeAccom(id){tripState.accommodation=tripState.accommodation.filter(a=>a.id!==id);document.getElementById(id)?.remove();updateTripPreview()}
+
+// Activity management
+let actCounter=0;
+function addActivity(){
+    const id='act_'+(++actCounter);
+    tripState.activities.push({id,day_number:1});
+    const container=document.getElementById('activity-cards');
+    const card=document.createElement('div');
+    card.className='transport-card';card.id=id;
+    card.innerHTML=`<div class="tc-header">📍 Activity <button class="tc-remove" onclick="removeActivity('${id}')">&times;</button></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <input class="plan-input" placeholder="Activity name" style="flex:1" oninput="updateActField('${id}','name',this.value)">
+            <select class="plan-input" style="width:120px" onchange="updateActField('${id}','time_slot',this.value)">
+                <option value="">Time</option><option>Morning</option><option>Afternoon</option><option>Evening</option>
+            </select>
+            <input class="plan-input" placeholder="Price" style="width:80px" oninput="updateActField('${id}','price',this.value)">
+            <input class="plan-input" placeholder="Link" style="flex:1;min-width:150px" oninput="updateActField('${id}','link',this.value)">
+        </div>`;
+    container.appendChild(card);
+    updateTripPreview();
+}
+
+function updateActField(id,field,value){const a=tripState.activities.find(a=>a.id===id);if(a)a[field]=value;updateTripPreview()}
+function removeActivity(id){tripState.activities=tripState.activities.filter(a=>a.id!==id);document.getElementById(id)?.remove();updateTripPreview()}
+
+// Preview generator
+function updateTripPreview(){
+    const s=tripState;
+    const dest=s.destination_id?allDestinations.find(d=>d.id===s.destination_id):null;
+    const destName=dest?dest.name:s.destination_custom||'(pick destination)';
+    const date=document.getElementById('plan-date')?.value||'';
+    const endDate=document.getElementById('plan-end-date')?.value||'';
+    const time=document.getElementById('plan-time')?.value||'';
+    const people=s.num_people||'';
+
+    let msg='🇦🇹 *Vienna Group Planner*\n\n';
+
+    if(s.type==='restaurant'){
+        msg+=`🍽 *${s.meal_type||'Meal'} Outing*\n`;
+        msg+=`📅 ${date||'(date)'} at ${time||'(time)'}\n`;
+        if(people) msg+=`👥 ${people} people\n`;
+        if(planSelected.length){
+            msg+=`\nRestaurant options:\n`;
+            planSelected.forEach((r,i)=>msg+=`${i+1}. ${r.name}\n`);
+            msg+=`\nVote by replying with the number!`;
+        }
+    }else{
+        const typeEmoji={day_trip:'🗺',overnight:'🏨',week:'✈️'}[s.type]||'🗺';
+        const typeLabel={day_trip:'Day Trip',overnight:'Trip',week:'Week Trip'}[s.type]||'Trip';
+        msg+=`${typeEmoji} *${typeLabel} to ${destName}*\n`;
+        msg+=`📅 ${date||'(date)'}${endDate?' → '+endDate:''}\n`;
+        if(people) msg+=`👥 ${people} people\n`;
+
+        if(s.transport.length){
+            msg+=`\n🚀 *Getting there:*\n`;
+            s.transport.forEach(t=>{
+                if(t.mode==='car') msg+=`• 🚗 ${t.driver_name||'Car'} (${t.seats_available||'?'} seats)\n`;
+                else if(t.mode==='train') msg+=`• 🚂 ${t.description||'Train'}${t.departure_time?' at '+t.departure_time:''}${t.price?' (~€'+t.price+')':''}\n`;
+                else msg+=`• ✈️ ${t.description||'Flight'}${t.departure_time?' at '+t.departure_time:''}${t.price?' (~€'+t.price+')':''}\n`;
+            });
+        }
+
+        if(s.accommodation.length){
+            msg+=`\n🏨 *Staying at:*\n`;
+            s.accommodation.forEach(a=>{
+                msg+=`• ${a.name||'TBD'}${a.price_per_night?' — €'+a.price_per_night+'/night':''}${a.num_rooms?' ('+a.num_rooms+' rooms)':''}\n`;
+            });
+        }
+
+        if(s.activities.length){
+            msg+=`\n📍 *Activities:*\n`;
+            s.activities.forEach(a=>{
+                const slot={'Morning':'🌅','Afternoon':'☀️','Evening':'🌙'}[a.time_slot]||'•';
+                msg+=`${slot} ${a.name||'TBD'}${a.price?' (€'+a.price+')':''}\n`;
+            });
+        }
+    }
+
+    if(s.notes) msg+=`\n💬 ${s.notes}\n`;
+    msg+=`\nWho's in? Reply ✅ or ❌`;
+
+    const preview=document.getElementById('plan-preview');
+    if(preview) preview.textContent=msg;
+}
+
+async function sendTripToWhatsApp(){
     const text=document.getElementById('plan-preview').textContent;
+    const u=getUser();
+
+    // Save trip to backend
+    if(tripState.type==='restaurant'){
+        const date=document.getElementById('plan-date').value;
+        const time=document.getElementById('plan-time').value||'19:00';
+        await fetch('/api/trips',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+            ...tripState, start_date:date, time, user_id:u.id, user_name:u.name
+        })});
+    }else{
+        await fetch('/api/trips',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+            ...tripState, start_date:document.getElementById('plan-date').value,
+            end_date:document.getElementById('plan-end-date')?.value||'',
+            user_id:u.id, user_name:u.name
+        })});
+    }
+
     window.open('https://wa.me/?text='+encodeURIComponent(text),'_blank');
-    // Also create event in system
-    const date=document.getElementById('plan-date').value;
-    const time=document.getElementById('plan-time').value||'19:00';
-    const note=document.getElementById('plan-note').value;
-    if(date){const u=getUser();fetch('/api/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:`/dinner ${date} ${time} ${note||'Group Outing'}`,user_id:u.id,user_name:u.name})})}
 }
 
 function copyPlanMessage(){navigator.clipboard.writeText(document.getElementById('plan-preview').textContent).then(()=>alert('Copied!'))}
