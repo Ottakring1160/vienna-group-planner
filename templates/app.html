@@ -166,9 +166,13 @@
                 <div id="step-destination" class="wizard-step" style="display:none">
                     <div class="plan-step"><div class="plan-step-num">1</div><div class="plan-step-content">
                         <div class="plan-step-label">Where to?</div>
-                        <div class="destination-grid" id="dest-grid"></div>
-                        <div style="margin-top:12px">
-                            <input type="text" class="plan-input" id="dest-custom" placeholder="Or type a custom destination..." oninput="tripState.destination_custom=this.value;updateTripPreview()">
+                        <div class="dest-search-bar">
+                            <span style="font-size:20px">🗺</span>
+                            <input type="text" class="plan-input" id="dest-custom" style="border:none;background:transparent;flex:1;padding:8px 0" placeholder="Type any destination... e.g. Salamanca, Salzburg, Bali..." oninput="handleDestSearch(this.value)">
+                        </div>
+                        <div id="dest-suggestions" style="margin-top:16px">
+                            <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:10px">Popular from Vienna</div>
+                            <div class="destination-grid" id="dest-grid"></div>
                         </div>
                     </div></div>
                 </div>
@@ -877,25 +881,56 @@ function setMealType(type, el){
 function renderDestinations(tripType){
     const typeMap={'day_trip':'day_trip','overnight':'overnight','week':'week'};
     const filtered=allDestinations.filter(d=>d.duration_type===typeMap[tripType]);
-    const grid=document.getElementById('dest-grid');
-    grid.innerHTML=filtered.map(d=>`
-        <div class="destination-card ${tripState.destination_id===d.id?'selected':''}" onclick="selectDestination(${d.id},this)">
-            <div class="dest-name">${d.name}</div>
-            <div class="dest-region">${d.region}${d.country!=='Austria'?' · '+d.country:''}</div>
-            <div class="dest-meta">${d.distance_km}km · ${d.has_airport?'✈️ Airport':'🚂 Train'}</div>
-            <div class="dest-desc">${d.description}</div>
-            <div class="dest-tags">${(d.tags||'').split(',').map(t=>'<span class="tag">'+t.trim()+'</span>').join('')}</div>
-        </div>
-    `).join('');
+    document.getElementById('dest-grid').innerHTML=filtered.map(d=>destCardHtml(d)).join('');
 }
 
 function selectDestination(id, el){
     tripState.destination_id=id;
     tripState.destination_custom='';
-    document.getElementById('dest-custom').value='';
+    const dest=allDestinations.find(d=>d.id===id);
+    document.getElementById('dest-custom').value=dest?dest.name:'';
     document.querySelectorAll('.destination-card').forEach(c=>c.classList.remove('selected'));
     el.classList.add('selected');
     updateTripPreview();
+}
+
+function handleDestSearch(val){
+    tripState.destination_custom=val;
+    tripState.destination_id=null;
+    document.querySelectorAll('.destination-card').forEach(c=>c.classList.remove('selected'));
+    // Check if typed text matches a seeded destination
+    const match=allDestinations.find(d=>d.name.toLowerCase()===val.toLowerCase());
+    if(match){
+        tripState.destination_id=match.id;
+        tripState.destination_custom='';
+        const card=document.querySelector(`.destination-card[data-id="${match.id}"]`);
+        if(card) card.classList.add('selected');
+    }
+    // Filter suggestion cards
+    const suggestions=document.getElementById('dest-suggestions');
+    if(val.length>2){
+        const filtered=allDestinations.filter(d=>d.name.toLowerCase().includes(val.toLowerCase())||d.region.toLowerCase().includes(val.toLowerCase())||(d.tags||'').toLowerCase().includes(val.toLowerCase()));
+        if(filtered.length>0&&filtered.length<allDestinations.length){
+            document.getElementById('dest-grid').innerHTML=filtered.map(d=>destCardHtml(d)).join('');
+        }else if(filtered.length===0){
+            // Custom destination, hide suggestions
+            suggestions.querySelector('div:first-child').textContent='Custom destination: '+val;
+            document.getElementById('dest-grid').innerHTML='';
+        }
+    }else{
+        suggestions.querySelector('div:first-child').textContent='Popular from Vienna';
+        renderDestinations(tripState.type);
+    }
+    updateTripPreview();
+}
+
+function destCardHtml(d){
+    return `<div class="destination-card ${tripState.destination_id===d.id?'selected':''}" data-id="${d.id}" onclick="selectDestination(${d.id},this)">
+        <div class="dest-name">${d.name}</div>
+        <div class="dest-region">${d.region}${d.country!=='Austria'?' · '+d.country:''}</div>
+        <div class="dest-meta">${d.distance_km}km · ${d.has_airport?'✈️ Airport':'🚂 Train'}</div>
+        <div class="dest-desc">${d.description}</div>
+    </div>`;
 }
 
 function togglePlanSelect(id,name,el){
