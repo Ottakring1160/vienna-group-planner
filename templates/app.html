@@ -306,32 +306,53 @@ const TILE_URL='https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y
 const TILE_ATTR='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>';
 const VIENNA=[48.2082,16.3738];
 
-const CUISINE_COLORS={
-    'Austrian':'#c0392b','Italian':'#27ae60','Japanese':'#8e44ad','Asian':'#e67e22',
-    'Chinese':'#e74c3c','Indian':'#f39c12','Mexican':'#2ecc71','Turkish':'#e74c3c',
-    'Greek':'#2980b9','French':'#2c3e50','American':'#3498db','Vegetarian/Vegan':'#27ae60',
-    'Seafood':'#2980b9','Brunch/Cafe':'#e67e22','Bar/Drinks':'#8e44ad','Korean':'#e91e63',
-    'Vietnamese':'#f39c12','Middle Eastern':'#d35400','Balkan':'#c0392b','Thai':'#e67e22',
-    'default':'#b8963e'
+const CUISINE_META={
+    'Austrian':    {color:'#c0392b', icon:'🇦🇹', label:'Austrian'},
+    'Italian':     {color:'#27ae60', icon:'🇮🇹', label:'Italian'},
+    'Japanese':    {color:'#8e44ad', icon:'🇯🇵', label:'Japanese'},
+    'Asian':       {color:'#e67e22', icon:'🥢', label:'Asian'},
+    'Chinese':     {color:'#e74c3c', icon:'🇨🇳', label:'Chinese'},
+    'Indian':      {color:'#f39c12', icon:'🇮🇳', label:'Indian'},
+    'Mexican':     {color:'#2ecc71', icon:'🇲🇽', label:'Mexican'},
+    'Turkish':     {color:'#e74c3c', icon:'🇹🇷', label:'Turkish'},
+    'Greek':       {color:'#2980b9', icon:'🇬🇷', label:'Greek'},
+    'French':      {color:'#2c3e50', icon:'🇫🇷', label:'French'},
+    'American':    {color:'#3498db', icon:'🇺🇸', label:'American'},
+    'Korean':      {color:'#e91e63', icon:'🇰🇷', label:'Korean'},
+    'Vietnamese':  {color:'#f39c12', icon:'🇻🇳', label:'Vietnamese'},
+    'Thai':        {color:'#e67e22', icon:'🇹🇭', label:'Thai'},
+    'Middle Eastern':{color:'#d35400', icon:'🧆', label:'Middle Eastern'},
+    'Balkan':      {color:'#c0392b', icon:'🥘', label:'Balkan'},
+    'Seafood':     {color:'#2980b9', icon:'🐟', label:'Seafood'},
+    'Vegetarian/Vegan':{color:'#27ae60', icon:'🌱', label:'Vegan'},
+    'Brunch/Cafe': {color:'#e67e22', icon:'☕', label:'Cafe'},
+    'Cafe':        {color:'#8B5E3C', icon:'☕', label:'Cafe'},
+    'Bar/Drinks':  {color:'#8e44ad', icon:'🍸', label:'Bar'},
+    'Bar':         {color:'#8e44ad', icon:'🍸', label:'Bar'},
+    'default':     {color:'#b8963e', icon:'🍽', label:'Restaurant'}
 };
 
-function cuisineColor(c){ return CUISINE_COLORS[c]||CUISINE_COLORS.default; }
+function cuisineColor(c){ return (CUISINE_META[c]||CUISINE_META.default).color; }
+function cuisineIcon(c){ return (CUISINE_META[c]||CUISINE_META.default).icon; }
 
 function makeMarkerIcon(cuisine, name){
-    const color=cuisineColor(cuisine);
-    const initial=name?name.charAt(0).toUpperCase():'?';
+    const meta=CUISINE_META[cuisine]||CUISINE_META.default;
     return L.divIcon({
         className:'custom-marker',
         html:`<div style="
-            width:34px;height:34px;border-radius:50% 50% 50% 4px;
-            background:${color};color:#fff;font-weight:700;font-size:13px;
+            width:38px;height:38px;border-radius:50%;
+            background:${meta.color};
             display:flex;align-items:center;justify-content:center;
-            box-shadow:0 3px 12px rgba(0,0,0,0.3);border:2.5px solid #fff;
-            font-family:var(--font-serif);transform:rotate(-45deg);
-        "><span style="transform:rotate(45deg)">${initial}</span></div>`,
-        iconSize:[34,34],
-        iconAnchor:[4,34],
-        popupAnchor:[14,-30]
+            box-shadow:0 3px 14px rgba(0,0,0,0.35);border:2.5px solid #fff;
+            font-size:18px;position:relative;
+        ">${meta.icon}<div style="
+            position:absolute;bottom:-6px;left:50%;transform:translateX(-50%);
+            width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;
+            border-top:8px solid ${meta.color};
+        "></div></div>`,
+        iconSize:[38,38],
+        iconAnchor:[19,44],
+        popupAnchor:[0,-40]
     });
 }
 
@@ -339,14 +360,15 @@ function makeMuseumIcon(name){
     return L.divIcon({
         className:'custom-marker',
         html:`<div style="
-            width:36px;height:36px;border-radius:10px;
-            background:#6c5ce7;color:#fff;font-size:16px;
+            width:40px;height:40px;border-radius:12px;
+            background:linear-gradient(135deg,#6c5ce7,#a78bfa);
             display:flex;align-items:center;justify-content:center;
-            box-shadow:0 3px 12px rgba(0,0,0,0.3);border:2.5px solid #fff;
-        ">🖼</div>`,
-        iconSize:[36,36],
-        iconAnchor:[18,36],
-        popupAnchor:[0,-32]
+            box-shadow:0 3px 14px rgba(108,92,231,0.4);border:2.5px solid #fff;
+            font-size:18px;
+        ">🏛</div>`,
+        iconSize:[40,40],
+        iconAnchor:[20,40],
+        popupAnchor:[0,-36]
     });
 }
 
@@ -482,7 +504,7 @@ function itemCard(item){
     return `<div class="item-card" data-id="${item.id}" onclick="openDetail(${item.id})" onmouseenter="highlightMarker(${item.id})" onmouseleave="unhighlightMarker(${item.id})">
         <div class="card-cuisine-header ${cuisineClass}"></div>
         ${item.avg_rating?`<div class="card-badge badge-rating">⭐ ${Math.round(item.avg_rating*10)/10}</div>`:''}
-        <div class="card-header">${item.name}</div>
+        <div class="card-header"><span style="margin-right:4px">${cuisineIcon(item.cuisine)}</span>${item.name}</div>
         ${det?`<div class="card-details">${det}</div>`:''}
         ${recHtml}
         ${vouchHtml}
