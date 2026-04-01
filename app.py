@@ -14,9 +14,9 @@ app.secret_key = "vienna-planner-prototype-secret"
 # Enable "Places API (New)" and "Geocoding API"
 GOOGLE_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY", "AIzaSyDSSwkwXjyE3Sm8DthXm89AvYReQjzjp_4")
 
-# Use /tmp on Render (ephemeral but writable), local file otherwise
-_db_dir = os.environ.get("RENDER", None)
-if _db_dir:
+# Use /tmp on cloud deployments (ephemeral but writable), local file otherwise
+_is_cloud = os.environ.get("RENDER") or os.environ.get("PORT")
+if _is_cloud:
     DB_PATH = "/tmp/vienna_planner.db"
 else:
     DB_PATH = os.path.join(os.path.dirname(__file__), "vienna_planner.db")
@@ -1769,8 +1769,11 @@ def format_item_card(item):
 
 
 # Initialize DB on import (needed for gunicorn on Render)
-init_db()
-seed_museums()
+try:
+    init_db()
+    seed_museums()
+except Exception as e:
+    print(f"DB init warning: {e}")
 
 if __name__ == "__main__":
     print("Database initialized.")
