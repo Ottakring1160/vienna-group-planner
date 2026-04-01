@@ -12,9 +12,14 @@ app.secret_key = "vienna-planner-prototype-secret"
 
 # Google Places API key — get from https://console.cloud.google.com/apis/credentials
 # Enable "Places API (New)" and "Geocoding API"
-GOOGLE_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY", "")
+GOOGLE_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY", "AIzaSyDSSwkwXjyE3Sm8DthXm89AvYReQjzjp_4")
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "vienna_planner.db")
+# Use /tmp on Render (ephemeral but writable), local file otherwise
+_db_dir = os.environ.get("RENDER", None)
+if _db_dir:
+    DB_PATH = "/tmp/vienna_planner.db"
+else:
+    DB_PATH = os.path.join(os.path.dirname(__file__), "vienna_planner.db")
 
 # Simulated group members for prototype
 GROUP_MEMBERS = [
@@ -1763,9 +1768,11 @@ def format_item_card(item):
     return card
 
 
+# Initialize DB on import (needed for gunicorn on Render)
+init_db()
+seed_museums()
+
 if __name__ == "__main__":
-    init_db()
-    seed_museums()
     print("Database initialized.")
     print("Starting Vienna Group Planner prototype...")
     print("Open http://localhost:5000 in your browser")
