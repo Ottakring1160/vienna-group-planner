@@ -48,6 +48,16 @@
                 </div>
             </div>
 
+            <!-- Flare Section -->
+            <div class="section" id="flare-section">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+                    <h2 style="margin-bottom:0">🔥 Flares</h2>
+                    <button class="btn-accent" onclick="openFlareModal()" style="font-size:13px">Send a Flare</button>
+                </div>
+                <div id="flares-list"></div>
+                <div class="empty-state" id="flares-empty" style="display:none"><span class="empty-state-icon">🔥</span>No active flares. Send one to see who's down!</div>
+            </div>
+
             <!-- Quick Actions -->
             <div class="quick-actions">
                 <div class="quick-action" onclick="showPage('restaurants')">
@@ -272,6 +282,40 @@
     </main>
 </div>
 
+<!-- Flare Modal -->
+<div class="modal-overlay" id="flare-modal" style="display:none">
+    <div class="modal" style="max-width:460px">
+        <div class="modal-header"><h2>🔥 Send a Flare</h2><button class="modal-close" onclick="document.getElementById('flare-modal').style.display='none'">&times;</button></div>
+        <div style="padding:24px;display:flex;flex-direction:column;gap:16px">
+            <div class="form-group"><label>What's the plan? <span class="required">*</span></label><input type="text" id="flare-msg" class="plan-input" placeholder="e.g. Dinner Friday? Drinks tonight? Day trip Saturday?"></div>
+            <div style="display:flex;gap:10px">
+                <div class="form-group" style="flex:1"><label>When</label><input type="date" id="flare-date" class="plan-input"></div>
+                <div class="form-group" style="width:110px"><label>Time</label><input type="time" id="flare-time" class="plan-input" value="19:00"></div>
+            </div>
+            <div class="form-group"><label>Vibe</label>
+                <div style="display:flex;gap:6px;flex-wrap:wrap" id="flare-vibes">
+                    <button type="button" class="plan-chip" onclick="selectVibe('Dinner',this)">🍽 Dinner</button>
+                    <button type="button" class="plan-chip" onclick="selectVibe('Drinks',this)">🍸 Drinks</button>
+                    <button type="button" class="plan-chip" onclick="selectVibe('Brunch',this)">🥐 Brunch</button>
+                    <button type="button" class="plan-chip" onclick="selectVibe('Day Trip',this)">🚂 Day Trip</button>
+                    <button type="button" class="plan-chip" onclick="selectVibe('Culture',this)">🎭 Culture</button>
+                    <button type="button" class="plan-chip" onclick="selectVibe('Active',this)">⛰️ Active</button>
+                    <button type="button" class="plan-chip" onclick="selectVibe('Chill',this)">😎 Chill</button>
+                    <button type="button" class="plan-chip" onclick="selectVibe('Party',this)">🎉 Party</button>
+                </div>
+            </div>
+            <div style="background:var(--bg-input);border-radius:var(--radius);padding:14px;font-size:13px;color:var(--text-secondary)">
+                <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:6px">WhatsApp Preview</div>
+                <div id="flare-preview"></div>
+            </div>
+            <div style="display:flex;gap:10px">
+                <button class="btn-whatsapp" onclick="sendFlare()" style="flex:1;padding:14px">🔥 Send Flare + WhatsApp</button>
+                <button class="btn-secondary" onclick="sendFlareOnly()">Save only</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Add City Event Modal -->
 <div class="modal-overlay" id="add-event-modal" style="display:none">
     <div class="modal" style="max-width:520px">
@@ -416,7 +460,7 @@ function showPage(p){
     if(navBtn) navBtn.classList.add('active');
     // Update URL hash without triggering hashchange
     history.replaceState(null,null,'#'+p);
-    if(p==='dashboard') loadDashboard();
+    if(p==='dashboard'){loadDashboard();loadFlares()}
     if(p==='restaurants'){loadRestaurants();setTimeout(()=>{initMap('restaurant-map','restaurantMap')},200)}
     if(p==='whatson') loadWhatsOn();
     if(p==='plan') loadPlanPage();
@@ -1157,6 +1201,158 @@ async function sendTripToWhatsApp(){
 }
 
 function copyPlanMessage(){navigator.clipboard.writeText(document.getElementById('plan-preview').textContent).then(()=>alert('Copied!'))}
+
+// ===== FLARES =====
+let selectedVibe='';
+
+async function loadFlares(){
+    const data=await fetch('/api/flares').then(r=>r.json());
+    const list=document.getElementById('flares-list');
+    const empty=document.getElementById('flares-empty');
+    if(!data.flares.length){list.innerHTML='';empty.style.display='block';return}
+    empty.style.display='none';
+
+    const u=getUser();
+    list.innerHTML=data.flares.map(f=>{
+        const inList=f.responses.filter(r=>r.response==='in');
+        const maybeList=f.responses.filter(r=>r.response==='maybe');
+        const outList=f.responses.filter(r=>r.response==='out');
+        const myResponse=f.responses.find(r=>r.user_id===u.id);
+        const vibeEmoji={Dinner:'🍽',Drinks:'🍸',Brunch:'🥐','Day Trip':'🚂',Culture:'🎭',Active:'⛰️',Chill:'😎',Party:'🎉'}[f.vibe]||'🔥';
+
+        const timeSince=getTimeSince(f.created_at);
+
+        return `<div class="flare-card">
+            <div class="flare-header">
+                <div class="flare-avatar">${f.created_by_name?f.created_by_name.charAt(0):'?'}</div>
+                <div class="flare-header-info">
+                    <div class="flare-author">${f.created_by_name} <span class="flare-time">${timeSince}</span></div>
+                    <div class="flare-message">${f.message}</div>
+                </div>
+                ${f.vibe?`<div class="flare-vibe">${vibeEmoji} ${f.vibe}</div>`:''}
+            </div>
+            <div class="flare-details">
+                ${f.date?`<span>📅 ${f.date}</span>`:''}
+                ${f.time?`<span>🕐 ${f.time}</span>`:''}
+            </div>
+            <div class="flare-responses">
+                <div class="flare-response-group">
+                    <div class="flare-response-label" style="color:var(--green)">✅ In (${inList.length})</div>
+                    <div class="flare-response-names">${inList.map(r=>r.user_name).join(', ')||'—'}</div>
+                </div>
+                <div class="flare-response-group">
+                    <div class="flare-response-label" style="color:var(--accent)">🤔 Maybe (${maybeList.length})</div>
+                    <div class="flare-response-names">${maybeList.map(r=>r.user_name).join(', ')||'—'}</div>
+                </div>
+                <div class="flare-response-group">
+                    <div class="flare-response-label" style="color:var(--red)">❌ Out (${outList.length})</div>
+                    <div class="flare-response-names">${outList.map(r=>r.user_name).join(', ')||'—'}</div>
+                </div>
+            </div>
+            <div class="flare-actions">
+                <button class="flare-btn ${myResponse&&myResponse.response==='in'?'flare-btn-active-in':''}" onclick="respondFlare(${f.id},'in')">✅ I'm in!</button>
+                <button class="flare-btn ${myResponse&&myResponse.response==='maybe'?'flare-btn-active-maybe':''}" onclick="respondFlare(${f.id},'maybe')">🤔 Maybe</button>
+                <button class="flare-btn ${myResponse&&myResponse.response==='out'?'flare-btn-active-out':''}" onclick="respondFlare(${f.id},'out')">❌ Can't</button>
+                <button class="flare-btn" onclick="shareFlare(${f.id},'${f.message.replace(/'/g,"\\'")}','${f.date||''}','${f.time||''}')">📤 Share</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function getTimeSince(dateStr){
+    if(!dateStr) return '';
+    const now=new Date();
+    const then=new Date(dateStr+'Z');
+    const mins=Math.floor((now-then)/60000);
+    if(mins<1) return 'just now';
+    if(mins<60) return mins+'m ago';
+    const hrs=Math.floor(mins/60);
+    if(hrs<24) return hrs+'h ago';
+    const days=Math.floor(hrs/24);
+    return days+'d ago';
+}
+
+async function respondFlare(flareId, response){
+    const u=getUser();
+    await fetch('/api/flares/'+flareId+'/respond',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:u.id,user_name:u.name,response})});
+    loadFlares();
+}
+
+function openFlareModal(){
+    document.getElementById('flare-modal').style.display='flex';
+    document.getElementById('flare-msg').value='';
+    document.getElementById('flare-date').value='';
+    document.getElementById('flare-time').value='19:00';
+    selectedVibe='';
+    document.querySelectorAll('#flare-vibes .plan-chip').forEach(c=>c.classList.remove('selected'));
+    updateFlarePreview();
+    document.getElementById('flare-msg').focus();
+    document.getElementById('flare-msg').addEventListener('input',updateFlarePreview);
+    document.getElementById('flare-date').addEventListener('input',updateFlarePreview);
+    document.getElementById('flare-time').addEventListener('input',updateFlarePreview);
+}
+
+function selectVibe(vibe,el){
+    selectedVibe=vibe;
+    document.querySelectorAll('#flare-vibes .plan-chip').forEach(c=>c.classList.remove('selected'));
+    el.classList.add('selected');
+    updateFlarePreview();
+}
+
+function updateFlarePreview(){
+    const msg=document.getElementById('flare-msg').value||'(type your message)';
+    const date=document.getElementById('flare-date').value;
+    const time=document.getElementById('flare-time').value;
+    const u=getUser();
+    let preview=`🔥 *FLARE from ${u.name}*\n\n${msg}\n`;
+    if(date) preview+=`📅 ${date}`;
+    if(time) preview+=` at ${time}`;
+    if(date||time) preview+='\n';
+    if(selectedVibe) preview+=`Vibe: ${selectedVibe}\n`;
+    preview+=`\nReply:\n✅ I'm in!\n🤔 Maybe\n❌ Can't make it`;
+    document.getElementById('flare-preview').textContent=preview;
+}
+
+async function sendFlare(){
+    const msg=document.getElementById('flare-msg').value;
+    if(!msg){alert('Write a message!');return}
+    const u=getUser();
+    await fetch('/api/flares',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        message:msg,
+        date:document.getElementById('flare-date').value,
+        time:document.getElementById('flare-time').value,
+        vibe:selectedVibe,
+        user_id:u.id,user_name:u.name
+    })});
+    const text=document.getElementById('flare-preview').textContent;
+    window.open('https://wa.me/?text='+encodeURIComponent(text),'_blank');
+    document.getElementById('flare-modal').style.display='none';
+    loadFlares();
+}
+
+async function sendFlareOnly(){
+    const msg=document.getElementById('flare-msg').value;
+    if(!msg){alert('Write a message!');return}
+    const u=getUser();
+    await fetch('/api/flares',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        message:msg,
+        date:document.getElementById('flare-date').value,
+        time:document.getElementById('flare-time').value,
+        vibe:selectedVibe,
+        user_id:u.id,user_name:u.name
+    })});
+    document.getElementById('flare-modal').style.display='none';
+    loadFlares();
+}
+
+function shareFlare(id,msg,date,time){
+    const u=getUser();
+    let text=`🔥 *FLARE*\n\n${msg}\n`;
+    if(date) text+=`📅 ${date}`;
+    if(time) text+=` at ${time}`;
+    text+=`\n\nReply ✅ or ❌`;
+    window.open('https://wa.me/?text='+encodeURIComponent(text),'_blank');
+}
 
 // ===== WHAT'S ON =====
 let allCityEvents=[], cityEventFilter='';

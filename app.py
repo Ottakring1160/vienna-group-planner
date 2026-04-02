@@ -402,6 +402,30 @@ def init_db():
             created_at TEXT DEFAULT (datetime('now')),
             UNIQUE(event_id, user_id)
         );
+
+        CREATE TABLE IF NOT EXISTS flares (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            message TEXT NOT NULL,
+            date TEXT,
+            time TEXT,
+            vibe TEXT,
+            item_id INTEGER,
+            created_by_id INTEGER,
+            created_by_name TEXT,
+            status TEXT DEFAULT 'active',
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS flare_responses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            flare_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            user_name TEXT,
+            response TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now')),
+            UNIQUE(flare_id, user_id),
+            FOREIGN KEY (flare_id) REFERENCES flares(id)
+        );
     """)
     conn.commit()
     conn.close()
@@ -773,6 +797,54 @@ def api_event_interest(event_id):
     count = conn.execute("SELECT COUNT(*) as c FROM city_event_interest WHERE event_id = ?", (event_id,)).fetchone()
     conn.close()
     return jsonify({"ok": True, "count": count["c"]})
+
+
+@app.route("/api/flares", methods=["GET", "POST"])
+def api_flares():
+    conn = get_db()
+    if request.method == "POST":
+        data = request.json
+        cursor = conn.execute(
+            "INSERT INTO flares (message, date, time, vibe, item_id, created_by_id, created_by_name) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (data.get("message"), data.get("date"), data.get("time"), data.get("vibe"),
+             data.get("item_id"), data.get("user_id"), data.get("user_name"))
+        )
+        conn.commit()
+        flare_id = cursor.lastrowid
+        conn.close()
+        return jsonify({"ok": True, "id": flare_id})
+
+    # GET — list active flares
+    flares = conn.execute("SELECT * FROM flares WHERE status = 'active' ORDER BY created_at DESC").fetchall()
+    result = []
+    for f in flares:
+        d = dict(f)
+        responses = conn.execute("SELECT * FROM flare_responses WHERE flare_id = ? ORDER BY created_at", (d["id"],)).fetchall()
+        d["responses"] = [dict(r) for r in responses]
+        d["in_count"] = sum(1 for r in d["responses"] if r["response"] == "in")
+        d["maybe_count"] = sum(1 for r in d["responses"] if r["response"] == "maybe")
+        d["out_count"] = sum(1 for r in d["responses"] if r["response"] == "out")
+        result.append(d)
+    conn.close()
+    return jsonify({"flares": result})
+
+
+@app.route("/api/flares/<int:flare_id>/respond", methods=["POST"])
+def api_flare_respond(flare_id):
+    data = request.json
+    conn = get_db()
+    conn.execute(
+        "INSERT OR IGNORE INTO flare_responses (flare_id, user_id, user_name, response) VALUES (?, ?, ?, ?)",
+        (flare_id, data.get("user_id"), data.get("user_name"), data.get("response"))
+    )
+    # Update if already exists (ON CONFLICT DO NOTHING won't update)
+    conn.execute(
+        "UPDATE flare_responses SET response = ? WHERE flare_id = ? AND user_id = ?",
+        (data.get("response"), flare_id, data.get("user_id"))
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
 
 
 @app.route("/api/destinations", methods=["GET"])
